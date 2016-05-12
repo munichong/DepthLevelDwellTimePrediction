@@ -1,0 +1,23 @@
+convert -ifile data_bs/user.libfm -ofilex data_bs/user.x -ofiley data_bs/user.y
+convert -ifile data_bs/page.libfm -ofilex data_bs/page.x -ofiley data_bs/page.y
+convert -ifile data_bs/depth.libfm -ofilex data_bs/depth.x -ofiley data_bs/depth.y
+convert -ifile data_bs/screen.libfm -ofilex data_bs/screen.x -ofiley  data_bs/screen.y
+convert -ifile data_bs/viewport.libfm -ofilex data_bs/viewport.x -ofiley data_bs/viewport.y
+convert -ifile data_bs/geo.libfm -ofilex data_bs/geo.x -ofiley data_bs/geo.y
+convert -ifile data_bs/length.libfm -ofilex data_bs/length.x -ofiley data_bs/length.y
+convert -ifile data_bs/channel.libfm -ofilex data_bs/channel.x -ofiley data_bs/channel.y
+convert -ifile data_bs/fresh.libfm -ofilex data_bs/fresh.x -ofiley data_bs/fresh.y
+
+
+transpose -ifile data_bs/user.x -ofile data_bs/user.xt
+transpose -ifile data_bs/page.x -ofile data_bs/page.xt
+transpose -ifile data_bs/depth.x -ofile data_bs/depth.xt
+transpose -ifile data_bs/screen.x -ofile data_bs/screen.xt
+transpose -ifile data_bs/viewport.x -ofile data_bs/viewport.xt
+transpose -ifile data_bs/geo.x -ofile data_bs/geo.xt
+transpose -ifile data_bs/length.x -ofile data_bs/length.xt
+transpose -ifile data_bs/channel.x -ofile data_bs/channel.xt
+transpose -ifile data_bs/fresh.x -ofile data_bs/fresh.xt
+
+
+libFM -task r -train data_bs/y.train -test data_bs/y.test -relation data_bs/user,data_bs/page,data_bs/depth,data_bs/screen,data_bs/viewport,data_bs/geo,data_bs/length,data_bs/channel,data_bs/fresh -dim '1,1,10' -iter 10
