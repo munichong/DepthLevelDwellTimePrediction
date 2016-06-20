@@ -7,7 +7,12 @@ from collections import defaultdict
 from math import log
 
 # page_dwell_time_threshold = 120
-screen_dwell_time_threshold = 120
+MIN_SCREEN_DWELL_TIME = 180
+
+def is_valid_screen_dwell(dwell):
+    if dwell > MIN_SCREEN_DWELL_TIME or dwell < 0:
+        return False
+    return True
 
 def get_depth_dwell_time(loglist):
     pv_summary = [] # [[screen_top, screen_bottom, dwell_time], [ ... ]]
@@ -39,8 +44,8 @@ def get_depth_dwell_time(loglist):
             if len(pv_summary) > 0: 
                 ''' If this is NOT the first log in this pageview '''
                 ''' calculate the dwell time of the previous screen '''
-                pv_summary[-1][2] = dwell_time - pv_summary[-1][2]
-                if pv_summary[-1][2] > screen_dwell_time_threshold or pv_summary[-1][2] < 0:
+                pv_summary[-1][2] = dwell_time - pv_summary[-1][2] # calculate the dwell time of the previous screen
+                if not is_valid_screen_dwell(pv_summary[-1][2]):
                     skip_pageview = True
                     break
             if index < len(loglist) - 1: 
@@ -53,9 +58,10 @@ def get_depth_dwell_time(loglist):
                 ''' If this log is the last log in this pageview '''
                 dwell_time = additionalinfo['Time on article']
                 pv_summary[-1][2] = dwell_time - pv_summary[-1][2]
-                if pv_summary[-1][2] > screen_dwell_time_threshold or pv_summary[-1][2] < 0:
+                if not is_valid_screen_dwell(pv_summary[-1][2]):
                     skip_pageview = True
                     break
+            ''' If this log is NOT the last log in this pageview, skip this row '''
             continue    
         elif log_dict["eventname"] == "Probably left":
             skip_pageview = True
@@ -67,7 +73,7 @@ def get_depth_dwell_time(loglist):
             if len(pv_summary) > 0:
                 ''' calculate the dwell time of the previous screen '''
                 pv_summary[-1][2] = additionalinfo['Total time'] - pv_summary[-1][2]
-                if pv_summary[-1][2] > screen_dwell_time_threshold or pv_summary[-1][2] < 0:
+                if not is_valid_screen_dwell(pv_summary[-1][2]):
                     skip_pageview = True
                     break
             else:
@@ -81,10 +87,6 @@ def get_depth_dwell_time(loglist):
     if skip_pageview:
         return None
     
-    
-    for screen_top, screen_bottom, dwell_time in pv_summary:
-        if dwell_time > 200 or dwell_time < 0:
-            print()
     
 #     depth_dwell_stats = get_depth_dwell_stats_conditional(pv_summary)
     depth_dwell_stats = get_depth_dwell_stats(pv_summary)
@@ -110,7 +112,9 @@ def get_depth_dwell_stats(pv_summary):
         max_scroll_depth = screen_bottom
         for depth in range(screen_top, screen_bottom + 1):
             depth_dwell_stats[depth] = dwell_time
-    
-    for d in range(max_scroll_depth + 1, 101):
-        depth_dwell_stats[d] = 0
+            
+    ''' fill the screens which were not scrolled '''
+    for d in range(0, 101):
+        if d not in depth_dwell_stats:
+            depth_dwell_stats[d] = 0
     return depth_dwell_stats

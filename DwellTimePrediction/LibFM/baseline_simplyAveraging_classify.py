@@ -48,14 +48,16 @@ for cha in dwell_depth_avg_channel:
     for dep in dwell_depth_avg_channel[cha]:
         dwell_depth_avg_channel[cha][dep] = mean(dwell_depth_avg_channel[cha][dep])
 
+print(dwell_depth_avg_gloabl)
 
+print(dwell_depth_avg_channel)
 
 ''' Classification - Log-loss '''
 y_pred_global = []
 y_pred_channel = []
 y_true = []
 for test_data in ttg.test_set:
-    dwell_time = 1 if test_data[0] >= required_dwell_time else 0
+    dwell_time = 1 if test_data[0] >= required_dwell_time else 0 # ground truth
     depth = test_data[3]
     channel = train_data[8]
     y_pred_global.append( dwell_depth_avg_gloabl[depth] )

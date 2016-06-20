@@ -3,6 +3,8 @@ Created on Apr 1, 2016
 
 @author: Wang
 '''
+from random import random, sample
+from collections import Counter
 from pymongo import MongoClient
 from BasicInvestigation.dwell_time_calculation import get_depth_dwell_time
 from LibFM import FreqUserPageSearcher as fups
@@ -10,19 +12,11 @@ from _collections import defaultdict
 from dateutil import parser
 from bs4 import BeautifulSoup
 from datetime import datetime
-
+import matplotlib.pyplot as plt  
 
 client = MongoClient()
 userlog = client['Forbes_Dec2015']['FreqUserLogPV']
 articleInfo = client['Forbes_Dec2015']['ArticleInfo']
-
-
-training_set = []
-test_set = []
-''' The keys are all users in the training set (before applying threshold) '''
-training_users_freq = defaultdict(int) 
-''' The keys are all pages in the training set (before applying threshold) '''
-training_pages_freq = defaultdict(int) 
 
 
 def get_user_geo(country, state):
@@ -57,17 +51,34 @@ def get_article_info(userlog_url, pv_start_time):
         return body_length, channel.lower(), freshness
     return ['unknown'] * 3
 
+
+class Pageview:
+    def __init__(self, uid, url, depth_dwell_time, **auxiliary):
+        self.uid = uid
+        self.url = url
+        self.screen, self.viewport = auxiliary['screen'], auxiliary['viewport']
+        self.create_depth_level(uid, url, depth_dwell_time, auxiliary)
+    
+    def create_depth_level(self, uid, url, depth_dwell_time, auxiliary):
+        """ convert pageview level data to depth level data
+        depth level data are used to train the predictive model """
+        self.depth_level_rows = []
+        for d, t in depth_dwell_time.items():
+            self.depth_level_rows.append((t, uid, url, d, 
+                                          auxiliary['screen'], auxiliary['viewport'], 
+                                          auxiliary['geo'], auxiliary['agent'],
+                                          auxiliary['weekday'], auxiliary['hour']
+                                          ))
+    
+
+
 user_num = 0
 valid_pv_num = 0
-train_pv_num = 0; train_dep_num = 0
-test_pv_num = 0; test_dep_num = 0
-channel_dist = defaultdict(int)
+user_freq = defaultdict(int); page_freq = defaultdict(int);
 
+all_pageviews = []
 for user_doc in fups.freq_uids: # for each unique user
     uid = user_doc['uid']
-
-#     if uid == "a805c8a0-22f9-5430-563f-603b9314c511":
-#         print()
     
     user_num += 1
     print(user_num)
@@ -76,9 +87,13 @@ for user_doc in fups.freq_uids: # for each unique user
     for pv_doc in userlog.find({'uid':uid}):
         url = pv_doc['url']
         unix_start_time = pv_doc['unix_start_time']
+             
+        
+        if unix_start_time < 1449792000 or unix_start_time > 1450656000:
+            continue
         
         """ if this page is not a frequent page """
-        if url not in fups.freq_page_list:
+        if url not in fups.freq_page_set:
             continue
         
 
@@ -89,100 +104,194 @@ for user_doc in fups.freq_uids: # for each unique user
         
         ''' this is a valid page view '''
         valid_pv_num += 1
+        user_freq[uid] += 1
+        page_freq[url] += 1
         
         
+        ''' AUXILIARY FEATURES '''
         screen_size = pv_doc['loglist'][0]['additionalinfo']['screenSize'] if 'screenSize' in pv_doc['loglist'][0]['additionalinfo'] else 'unknown'
+        
         viewport_size = pv_doc['loglist'][0]['additionalinfo']['viewportSize'] if 'viewportSize' in pv_doc['loglist'][0]['additionalinfo'] else 'unknown'
+        
         user_geo = get_user_geo(pv_doc['country'], pv_doc['state'])
-        body_length, channel, freshness = get_article_info(url, pv_doc['unix_start_time'])
-#         print(screen_size, viewport_size, user_geo, body_length, channel, freshness)
-        channel_dist[channel] += 1
         
-        ''' distinguish training and test data '''
-        if unix_start_time >= 1449792000 and unix_start_time < 1450569600:
-            ''' training data '''
-            train_pv_num += 1
-            training_users_freq[uid] += 1
-            training_pages_freq[url] += 1
-            for d, t in depth_dwell_time.items():
-                train_dep_num += 1
-                training_set.append((t, uid, url, d, screen_size, viewport_size, user_geo, body_length, channel, freshness, pv_doc['ua']))
-                
-        elif unix_start_time >= 1450569600 and unix_start_time < 1450656000:
-            ''' test data '''
-            test_pv_num += 1
-            for d, t in depth_dwell_time.items():
-                test_dep_num += 1
-                test_set.append((t, uid, url, d, screen_size, viewport_size, user_geo, body_length, channel, freshness, pv_doc['ua']))
-                
+        isodate = pv_doc['local_start_time']
+        if isodate:
+            local_weekday, local_hour = str(isodate.weekday()), str(isodate.hour) # The range of weekday is [0, 6]
         else:
-            continue
-          
+            local_weekday, loca_hour = 'unknown', 'unknown'
+        
+        
+#         body_length, channel, freshness = get_article_info(url, pv_doc['unix_start_time'])
+#         print(screen_size, viewport_size, user_geo, body_length, channel, freshness)
+#         channel_dist[channel] += 1
+        
+        pageview = Pageview(uid, url, depth_dwell_time, screen=screen_size, 
+                            viewport=viewport_size, geo=user_geo, agent=pv_doc['ua'], 
+                            weekday=local_weekday, hour=local_hour
+                            ) #body_length, channel, freshness
+        all_pageviews.append(pageview)
+        
+#         ''' distinguish training and test data '''
+#         if unix_start_time >= 1449792000 and unix_start_time < 1450569600:
+#             ''' training data '''
+#             train_pv_num += 1
+#             training_users_freq[uid] += 1
+#             training_pages_freq[url] += 1
+#             for d, t in depth_dwell_time.items():
+#                 train_dep_num += 1
+#                 training_set.append((t, uid, url, d, screen_size, viewport_size, user_geo, pv_doc['ua']))
+#               
+#         elif unix_start_time >= 1450569600 and unix_start_time < 1450656000:
+#             ''' test data '''
+#             test_pv_num += 1
+#             for d, t in depth_dwell_time.items():
+#                 test_dep_num += 1
+#                 test_set.append((t, uid, url, d, screen_size, viewport_size, user_geo, pv_doc['ua']))
+# #                 test_set.append((t, uid, url, d, screen_size, viewport_size, user_geo, body_length, channel, freshness, pv_doc['ua']))
+                
+                              
         
 print()
-# print("valid_pv_num =", valid_pv_num)
-print("train_pv_num =", train_pv_num, "; train_dep_num =", train_dep_num)
-print("test_pv_num =", test_pv_num, "; test_dep_num =", test_dep_num)
-print("initial training user num =", len(training_users_freq), "; initial training page num =", len(training_pages_freq))
+print("=============== Statistics of Initial Data ================")
+print("valid_pv_num =", valid_pv_num)
+print(len(user_freq), " unique users and ", len(page_freq), " unique pages")
+print("density =", valid_pv_num/float(len(user_freq) * len(page_freq)))
 print()
 
 
-# for cha in channel_dist:
-#     print(cha, ',', channel_dist[cha])
+# """ Build RecsysMatrix, which rank users and pages by frequency"""
 
 
-def filter_pageviews_by_minPVnum(dataset):
+
+
+
+
+user_freq2 = defaultdict(int)
+page_freq2 = defaultdict(int)
+valid_pv_num2 = 0
+def filter_pageviews_by_minPVnum(pvs):
     filtered_dataset = []
-    for data in dataset:
-        uid = data[1]
-        url = data[2]
-        if ( training_users_freq[uid] < fups.COLD_START_THRESHOLD or 
-             training_pages_freq[url] < fups.COLD_START_THRESHOLD ):
+    global valid_pv_num2, user_freq2, page_freq2
+    for pv in pvs:
+        uid = pv.uid
+        url = pv.url
+        if ( user_freq[uid] < fups.COLD_START_THRESHOLD or 
+             page_freq[url] < fups.COLD_START_THRESHOLD ):
             continue
-        filtered_dataset.append(data)
+        user_freq2[uid] += 1
+        page_freq2[url] += 1 
+        valid_pv_num2 += 1
+        filtered_dataset.append(pv)
     return filtered_dataset
 
 
-training_set = filter_pageviews_by_minPVnum(training_set)
-test_set = filter_pageviews_by_minPVnum(test_set)
-
-
-def _test_overlap(training_set, test_set):
-    unique_training_users = set(); unique_training_pages = set()
-    unique_test_users = set(); unique_test_pages = set()
-    for data in training_set:
-        unique_training_users.add(data[1])
-        unique_training_pages.add(data[2])
-    for data in test_set:
-        unique_test_users.add(data[1])
-        unique_test_pages.add(data[2])
-        
-    print()
-    print("final pageview num:", len(training_set)/100)
-    print("final training users:", len(unique_training_users), "final training pages:", len(unique_training_pages))
-    print("final test users:", len(unique_test_users), "final test pages:", len(unique_test_pages))
-    print("user overlap:", len(unique_training_users & unique_test_users), "page overlap:", len(unique_training_pages & unique_test_pages))
-    
-#     for abnormal_user in unique_test_users - unique_training_users:
-#         print(abnormal_user)
-    final_user_freq = defaultdict(int)
-    final_page_freq = defaultdict(int)
-    for data in training_set:
-        final_user_freq[data[1]] += 1
-        final_page_freq[data[2]] += 1
-#     print(len(final_user_freq), len(final_page_freq))
-    infreq_user_num = 0
-    infreq_page_num = 0
-    for user in final_user_freq:
-        if final_user_freq[user] < fups.COLD_START_THRESHOLD:
-            infreq_user_num += 1
-    for page in final_page_freq:
-        if final_page_freq[page] < fups.COLD_START_THRESHOLD:
-            infreq_page_num += 1
-    print(infreq_user_num, infreq_page_num)
-    
-    
-_test_overlap(training_set, test_set)    
+filtered_pageviews = filter_pageviews_by_minPVnum(all_pageviews)
 
 print()
+print("=============== Statistics of Further Data ================")
+print("valid_pv_num2 =", valid_pv_num2)
+print(len(user_freq2), "unique users and", len(page_freq2), "unique pages")
+print("density =", valid_pv_num2/float(len(user_freq2) * len(page_freq2)))
+print()
+
+print("(count, freqOfCount)")
+print( Counter(user_freq2.values()).most_common() )
+print( Counter(page_freq2.values()).most_common() )
+
+print(sorted(Counter(user_freq2.values()).most_common(), key=lambda x:x[0], reverse=False))
+print(sorted(Counter(page_freq2.values()).most_common(), key=lambda x:x[0], reverse=False))
+
+
+
+
+# def _test_overlap(training_set, test_set):
+#     unique_training_users = set(); unique_training_pages = set()
+#     unique_test_users = set(); unique_test_pages = set()
+#     for data in training_set:
+#         unique_training_users.add(data[1])
+#         unique_training_pages.add(data[2])
+#     for data in test_set:
+#         unique_test_users.add(data[1])
+#         unique_test_pages.add(data[2])
+#         
+#     print()
+#     print("final pageview num:", len(training_set)/100)
+#     print("final training users:", len(unique_training_users), "final training pages:", len(unique_training_pages))
+#     print("final test users:", len(unique_test_users), "final test pages:", len(unique_test_pages))
+#     print("user overlap:", len(unique_training_users & unique_test_users), "page overlap:", len(unique_training_pages & unique_test_pages))
+#     print("density =", len(training_set)/float(100 * len(unique_training_users) * len(unique_training_pages)))
+#     
+# #     for abnormal_user in unique_test_users - unique_training_users:
+# #         print(abnormal_user)
+#     final_user_freq = defaultdict(int)
+#     final_page_freq = defaultdict(int)
+#     for data in training_set:
+#         final_user_freq[data[1]] += 1
+#         final_page_freq[data[2]] += 1
+# #     print(len(final_user_freq), len(final_page_freq))
+#     infreq_user_num = 0
+#     infreq_page_num = 0
+#     for user in final_user_freq:
+#         if final_user_freq[user] < fups.COLD_START_THRESHOLD:
+#             infreq_user_num += 1
+#     for page in final_page_freq:
+#         if final_page_freq[page] < fups.COLD_START_THRESHOLD:
+#             infreq_page_num += 1
+#     print(infreq_user_num, infreq_page_num)
+#     
+#     
+# _test_overlap(training_set, test_set)    
+# 
+# print()
+
+
+print("\n=============== Separating Training and Test Data ================")
+""" Randomly pick 10% training and test instances """
+training_set = []
+test_set = []
+# users_have_been_in_test = set()
+# pages_have_been_in_test = set()
+for pv in filtered_pageviews:
+#     if ( user_freq2[uid] < fups.COLD_START_THRESHOLD or 
+#         page_freq2[url] < fups.COLD_START_THRESHOLD ):
+#         continue
+     
+    if ( user_freq2[pv.uid] > fups.COLD_START_THRESHOLD and 
+         page_freq2[pv.url] > fups.COLD_START_THRESHOLD ):
+        test_set.append(pv)
+        user_freq2[pv.uid] -= 1
+        page_freq2[pv.url] -= 1
+    else:
+        training_set.append(pv)
+        
+print()
+print(len(training_set), "pageviews in the training set")
+print(len(test_set), "pageviews in the test set")
+print("The fraction is", len(test_set) / float(valid_pv_num2))
+print()
+
+
+""" Plot the distribution of screen and viewport """    
+# screen_width_list = []
+# screen_height_list = []
+# viewport_width_list = []
+# viewport_height_list = []
+# # Check the distribution of screen and viewport
+# for pv in filtered_pageviews:
+#     if pv.screen == 'unknown' or pv.viewport == 'unknown':
+#         continue
+#     screen_width, screen_height = [int(pixel) for pixel in pv.screen.split('x')]
+#     screen_width_list.append(screen_width)
+#     screen_height_list.append(screen_height)
+#     viewport_width, viewport_height = [int(pixel) for pixel in pv.viewport.split('x')]
+#     viewport_width_list.append(viewport_width)
+#     viewport_height_list.append(viewport_height)
+#     
+# 
+# fig = plt.figure()
+# ax = fig.add_subplot(111)
+# ax.boxplot([screen_width_list, screen_height_list, viewport_width_list, viewport_height_list])
+# plt.show()
+
 
