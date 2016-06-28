@@ -15,6 +15,7 @@ def is_valid_screen_dwell(dwell):
     return True
 
 def get_depth_dwell_time(loglist):
+#     print(loglist)
     pv_summary = [] # [[screen_top, screen_bottom, dwell_time], [ ... ]]
     skip_pageview = False
     for index, log_dict in enumerate(loglist):
@@ -84,7 +85,7 @@ def get_depth_dwell_time(loglist):
         
     
                     
-    if skip_pageview:
+    if skip_pageview or not pv_summary:
         return None
     
     
@@ -102,19 +103,23 @@ def get_depth_dwell_stats_conditional(pv_summary):
     depth_dwell_stats = defaultdict(int)
     for screen_top, screen_bottom, dwell_time in pv_summary:
         for depth in range(screen_top, screen_bottom + 1):
-            depth_dwell_stats[depth] = dwell_time
+            depth_dwell_stats[depth] = (dwell_time, screen_top, screen_bottom)
     return depth_dwell_stats
 
 def get_depth_dwell_stats(pv_summary):
-    max_scroll_depth = 0
-    depth_dwell_stats = defaultdict(int)
+    mean_area_size = []
+    depth_dwell_stats = defaultdict(tuple)
+#     print(pv_summary)
     for screen_top, screen_bottom, dwell_time in pv_summary:
-        max_scroll_depth = screen_bottom
+        mean_area_size.append(screen_bottom - screen_top)
         for depth in range(screen_top, screen_bottom + 1):
-            depth_dwell_stats[depth] = dwell_time
+            depth_dwell_stats[depth] = (dwell_time, screen_top, screen_bottom)
+    mean_area_size = sum(mean_area_size) / len(mean_area_size)
             
     ''' fill the screens which were not scrolled '''
     for d in range(0, 101):
         if d not in depth_dwell_stats:
-            depth_dwell_stats[d] = 0
+            simulated_top = d - mean_area_size if d - mean_area_size >= 0 else 0
+            simulated_bottom = d + mean_area_size if d - mean_area_size <= 100 else 100
+            depth_dwell_stats[d] = (0, simulated_top, simulated_bottom)
     return depth_dwell_stats
