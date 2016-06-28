@@ -53,7 +53,15 @@ def get_freshness(doc, pv_start_time):
         return str(freshness_hour)
     else:
         return 'unknown'
-    
+
+def get_channel_group(doc):
+    if 'channelSection' not in doc:
+        return ['unknown']
+    channel_group = set()
+    for chanSec_dict in doc['channelSection']:
+        channel_group.add(chanSec_dict['channelId'].lower())
+    return list(channel_group)
+
 def get_article_info(userlog_url, pv_start_time):
     for doc in articleInfo.find({'URL_IN_USERLOG':userlog_url}):
         
@@ -66,10 +74,11 @@ def get_article_info(userlog_url, pv_start_time):
             body_text = 'unknown'
             body_length = 'unknown'
         channel = doc['displayChannel'] if 'displayChannel' in doc else 'unknown'
+        channel_group = get_channel_group(doc) # list
         freshness = get_freshness(doc, pv_start_time)
         
-        return body_length, channel.lower(), freshness, body_text.lower()
-    return ['unknown'] * 4
+        return body_length, channel.lower(), channel_group, freshness, body_text.lower()
+    return ['unknown'] * 5
 
 
 class Pageview:
@@ -90,7 +99,7 @@ class Pageview:
                                           auxiliary['geo'], auxiliary['agent'],
                                           auxiliary['weekday'], auxiliary['hour'], 
                                           auxiliary['length'], auxiliary['channel'],
-                                          auxiliary['fresh']
+                                          auxiliary['channel_group'], auxiliary['fresh']
                                           ))
 
     
@@ -100,9 +109,9 @@ user_num = 0
 valid_pv_num = 0
 user_freq = defaultdict(int); page_freq = defaultdict(int);
 
-length_dist = defaultdict(int)
-channel_dist = defaultdict(int)
-fresh_dist = defaultdict(int)
+# length_dist = defaultdict(int)
+# channel_dist = defaultdict(int)
+# fresh_dist = defaultdict(int)
 
 porter_stemmer = PorterStemmer()
 
@@ -148,11 +157,11 @@ for user_doc in fups.freq_uids: # for each unique user
             local_weekday, loca_hour = 'unknown', 'unknown'
         
         
-        body_length, channel, freshness, body_text = get_article_info(url, pv_doc['unix_start_time'])
-#         print(screen_size, viewport_size, user_geo, body_length, channel, freshness)
-        length_dist[body_length] += 1
-        channel_dist[channel] += 1
-        fresh_dist[freshness] += 1
+        body_length, channel, channel_group, freshness, body_text = get_article_info(url, pv_doc['unix_start_time'])
+
+#         length_dist[body_length] += 1
+#         channel_dist[channel] += 1
+#         fresh_dist[freshness] += 1
         
         all_body_text[url] = body_text
         
@@ -164,7 +173,8 @@ for user_doc in fups.freq_uids: # for each unique user
         pageview = Pageview(uid, url, depth_dwell_time, screen=screen_size, 
                             viewport=viewport_size, geo=user_geo, agent=pv_doc['ua'], 
                             weekday=local_weekday, hour=local_hour, 
-                            length=body_length, channel=channel, fresh=freshness
+                            length=body_length, channel=channel, channel_group=channel_group,
+                            fresh=freshness
                             )
         all_pageviews.append(pageview)
         
@@ -223,7 +233,7 @@ print("Creating the MM file...")
 corpora.MmCorpus.serialize('lda.mm', corpus)
 mm = corpora.MmCorpus('lda.mm')
 print("Building LDA model...")
-lda = models.ldamodel.LdaModel(corpus=mm, num_topics=10)
+lda = models.ldamodel.LdaModel(corpus=mm, num_topics=30)
 print("A LDA model is built.\n")
 doc_lda = lda[dictionary.doc2bow(['ability', 'bellyoyo', 'activated', 'activity', 'add'])]
 pprint(doc_lda)

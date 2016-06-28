@@ -30,6 +30,7 @@ weekday_libfm_output = open('../data_bs/weekday.libfm', 'w')
 hour_libfm_output = open('../data_bs/hour.libfm', 'w')
 length_libfm_output = open('../data_bs/length.libfm', 'w')
 channel_libfm_output = open('../data_bs/channel.libfm', 'w')
+channelgroup_libfm_output = open('../data_bs/channel_group.libfm', 'w')
 fresh_libfm_output = open('../data_bs/fresh.libfm', 'w')
 keyword_libfm_output = open('../data_bs/keyword.libfm', 'w')
 topic_libfm_output = open('../data_bs/topic.libfm', 'w')
@@ -49,6 +50,7 @@ weekday_train_output = open('../data_bs/weekday.train', 'w')
 hour_train_output = open('../data_bs/hour.train', 'w')
 length_train_output = open('../data_bs/length.train', 'w')
 channel_train_output = open('../data_bs/channel.train', 'w')
+channelgroup_train_output = open('../data_bs/channel_group.train', 'w')
 fresh_train_output = open('../data_bs/fresh.train', 'w')
 keyword_train_output = open('../data_bs/keyword.train', 'w')
 topic_train_output = open('../data_bs/topic.train', 'w')
@@ -68,6 +70,7 @@ weekday_test_output = open('../data_bs/weekday.test', 'w')
 hour_test_output = open('../data_bs/hour.test', 'w')
 length_test_output = open('../data_bs/length.test', 'w')
 channel_test_output = open('../data_bs/channel.test', 'w')
+channelgroup_test_output = open('../data_bs/channel_group.test', 'w')
 fresh_test_output = open('../data_bs/fresh.test', 'w')
 keyword_test_output = open('../data_bs/keyword.test', 'w')
 topic_test_output = open('../data_bs/topic.test', 'w')
@@ -89,6 +92,7 @@ def write_new_featval(featval, lookup, output):
         output.write('0 ' + str(lookup[featval]) + ':1\n')    
 
 def write_new_featval_multi(indice, vals, key, lookup, output): 
+    """ if this is a new variable """
     if key not in lookup:
         lookup[key] = len(lookup)
         output.write('0')
@@ -130,6 +134,7 @@ weekday_index_lookup = defaultdict(int)
 hour_index_lookup = defaultdict(int)
 length_index_lookup = defaultdict(int)
 channel_index_lookup = defaultdict(int)
+channelgroup_index_lookup = defaultdict(int)
 fresh_index_lookup = defaultdict(int)
 keyword_index_lookup = defaultdict(int)
 topic_index_lookup = defaultdict(int)
@@ -148,7 +153,8 @@ dwell_page_depth_list = defaultdict(dict)
 print("FM: Iterating through training data")
 for training_pv in ttg.training_set:
     for training_depth in training_pv.depth_level_rows:
-        dwell, uid, url, depth, top, bottom, screen, viewport, user_geo, agent, weekday, hour, length, channel, fresh = training_depth
+        (dwell, uid, url, depth, top, bottom, screen, viewport, user_geo, agent,
+                                weekday, hour, length, channel, channel_group, fresh) = training_depth
         
         
         ''' transform features if necessary '''
@@ -174,6 +180,11 @@ for training_pv in ttg.training_set:
         keyword_values = [1] * len(keyword_indice)
         keyword_key = ' '.join([str(i) for i in keyword_indice])
         
+        channelgroup_values = [1.0/len(channel_group)] * len(channel_group)
+        channel_group_indice = [c.split('_')[-1] for c in channel_group]
+#         channelgroup_values = [1] * len(channel_group)
+        channelgroup_key = ' '.join(channel_group +
+                                    [str(v) for v in channelgroup_values])
         
 #         screen_val_dist[screen] += 1
 #         viewport_val_dist[viewport] += 1
@@ -192,8 +203,11 @@ for training_pv in ttg.training_set:
         write_new_featval(hour, hour_index_lookup, hour_libfm_output)
         write_new_featval(length, length_index_lookup, length_libfm_output)
         write_new_featval(channel, channel_index_lookup, channel_libfm_output)
+        write_new_featval_multi(channel_group_indice, channelgroup_values, channelgroup_key,
+                                channelgroup_index_lookup, channelgroup_libfm_output)
         write_new_featval(fresh, fresh_index_lookup, fresh_libfm_output)
-        write_new_featval_multi(keyword_indice, keyword_values, keyword_key, keyword_index_lookup, keyword_libfm_output)
+        write_new_featval_multi(keyword_indice, keyword_values, keyword_key,
+                                keyword_index_lookup, keyword_libfm_output)
         write_new_featval(topic, topic_index_lookup, topic_libfm_output)
         
         
@@ -212,6 +226,7 @@ for training_pv in ttg.training_set:
         hour_train_output.write(str(hour_index_lookup[hour]) + '\n')
         length_train_output.write(str(length_index_lookup[length]) + '\n')
         channel_train_output.write(str(channel_index_lookup[channel]) + '\n')
+        channelgroup_train_output.write(str(channelgroup_index_lookup[channelgroup_key]) + '\n')
         fresh_train_output.write(str(fresh_index_lookup[fresh]) + '\n')
         keyword_train_output.write(str(keyword_index_lookup[keyword_key]) + '\n')
         topic_train_output.write(str(topic_index_lookup[topic]) + '\n')
@@ -270,7 +285,8 @@ y_true = []
 print("FM: Iterating through test data")
 for test_pv in ttg.test_set:
     for test_depth in test_pv.depth_level_rows:
-        dwell, uid, url, depth, top, bottom, screen, viewport, user_geo, agent, weekday, hour, length, channel, fresh = test_depth
+        (dwell, uid, url, depth, top, bottom, screen, viewport, user_geo, agent, 
+                                     weekday, hour, length, channel, channel_group, fresh) = test_depth
         
         ''' transform features if necessary '''
         screen = discretize_pixel_area(screen)
@@ -289,6 +305,12 @@ for test_pv in ttg.test_set:
         keyword_indice = sorted(list( ttg.tfidf_vectorizer.transform(area_text).nonzero()[1] ))
         keyword_values = [1] * len(keyword_indice)
         keyword_key = ' '.join([str(i) for i in keyword_indice])
+        
+        channelgroup_values = [1.0/len(channel_group)] * len(channel_group)
+#         channel_group_indice = [c.split('_')[-1] for c in channel_group]
+        channelgroup_key = ' '.join(channel_group +
+                                    [str(v) for v in channelgroup_values])
+        
     
         if ( uid not in user_index_lookup or 
              url not in page_index_lookup or 
@@ -303,13 +325,16 @@ for test_pv in ttg.test_set:
              viewport_width not in viewport_width_index_lookup or 
              channel not in channel_index_lookup or 
              length not in length_index_lookup or 
-             fresh not in fresh_index_lookup
-#              body_length not in length_index_lookup
+             fresh not in fresh_index_lookup or
+             topic not in topic_index_lookup
             ):
             continue
         
         ''' Output features to .libfm files '''
-        write_new_featval_multi(keyword_indice, keyword_values, keyword_key, keyword_index_lookup, keyword_libfm_output)
+        write_new_featval_multi(keyword_indice, keyword_values, keyword_key,
+                                keyword_index_lookup, keyword_libfm_output) # write new keywords combination into libfm file
+        write_new_featval_multi(channel_group, channelgroup_values, channelgroup_key,
+                                channelgroup_index_lookup, channelgroup_libfm_output)
         
         
         user_test_output.write(str(user_index_lookup[uid]) + '\n')
@@ -326,6 +351,7 @@ for test_pv in ttg.test_set:
         hour_test_output.write(str(hour_index_lookup[hour]) + '\n')
         length_test_output.write(str(length_index_lookup[length]) + '\n')
         channel_test_output.write(str(channel_index_lookup[channel]) + '\n')
+        channelgroup_test_output.write(str(channelgroup_index_lookup[channelgroup_key]) + '\n')
         fresh_test_output.write(str(fresh_index_lookup[fresh]) + '\n')
         keyword_test_output.write(str(keyword_index_lookup[keyword_key]) + '\n')
         topic_test_output.write(str(topic_index_lookup[topic]) + '\n')
