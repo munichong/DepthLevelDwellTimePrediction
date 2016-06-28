@@ -165,7 +165,7 @@ for training_pv in ttg.training_set:
         viewport_height = viewport.split('x')[0] if viewport != 'unknown' else 'unknown'
         viewport_width = viewport.split('x')[1] if viewport != 'unknown' else 'unknown'
         
-        area_text = get_area_text(top, bottom, ttg.all_body_text[url]) # e.g. ['abc', 'adsf', 'asde']
+        area_text = get_area_text(top, bottom, ttg.all_training_text[url]) # e.g. ['abc', 'adsf', 'asde']
 #         print(ttg.tfidf_vectorizer.transform(area_text))
         topic, _ = get_lda_topic(area_text)
         topic = str(topic)
@@ -176,7 +176,7 @@ for training_pv in ttg.training_set:
 #         print(len(keyword_indice))
         if not keyword_indice:
 #             print("NO TF-IDF KEYWORDS ARE FOUND.")
-            area_text = get_area_text(top, bottom, ttg.all_body_text[url])
+            area_text = get_area_text(top, bottom, ttg.all_training_text[url])
         keyword_values = [1] * len(keyword_indice)
         keyword_key = ' '.join([str(i) for i in keyword_indice])
         
@@ -296,7 +296,7 @@ for test_pv in ttg.test_set:
         viewport_height = viewport.split('x')[0] if viewport != 'unknown' else 'unknown'
         viewport_width = viewport.split('x')[1] if viewport != 'unknown' else 'unknown'
         
-        area_text = get_area_text(top, bottom, ttg.all_body_text[url])
+        area_text = get_area_text(top, bottom, ttg.all_test_text[url])
         topic, _ = get_lda_topic(area_text)
         topic = str(topic)
         

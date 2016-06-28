@@ -4,6 +4,7 @@ Created on Apr 1, 2016
 @author: Wang
 '''
 import re
+from math import sqrt
 from pprint import pprint
 from random import random, sample
 from collections import Counter
@@ -77,8 +78,20 @@ def get_article_info(userlog_url, pv_start_time):
         channel_group = get_channel_group(doc) # list
         freshness = get_freshness(doc, pv_start_time)
         
-        return body_length, channel.lower(), channel_group, freshness, body_text.lower()
-    return ['unknown'] * 5
+        return body_length, channel.lower(), channel_group, freshness
+    return ['unknown'] * 4
+
+def get_body_text(userlog_url):
+    for doc in articleInfo.find({'URL_IN_USERLOG':userlog_url}):
+        
+        if 'body' in doc:
+            body_text = BeautifulSoup(doc['body']).getText()
+            body_text = re.sub(r'\[.*?\]', ' ', body_text)
+        else:
+            body_text = 'unknown'
+        
+        return body_text
+    return 'unknown'
 
 
 class Pageview:
@@ -116,7 +129,6 @@ user_freq = defaultdict(int); page_freq = defaultdict(int);
 porter_stemmer = PorterStemmer()
 
 all_pageviews = []
-all_body_text = defaultdict(str) # url -> body_text
 for user_doc in fups.freq_uids: # for each unique user
     uid = user_doc['uid']
     
@@ -157,13 +169,12 @@ for user_doc in fups.freq_uids: # for each unique user
             local_weekday, loca_hour = 'unknown', 'unknown'
         
         
-        body_length, channel, channel_group, freshness, body_text = get_article_info(url, pv_doc['unix_start_time'])
+        body_length, channel, channel_group, freshness = get_article_info(url, pv_doc['unix_start_time'])
 
 #         length_dist[body_length] += 1
 #         channel_dist[channel] += 1
 #         fresh_dist[freshness] += 1
-        
-        all_body_text[url] = body_text
+    
         
         ''' this is a valid page view '''
         valid_pv_num += 1
@@ -206,75 +217,6 @@ print("density =", valid_pv_num/float(len(user_freq) * len(page_freq)))
 print()
 
 
-""" Build LDA Model """
-clean_tokens = []
-for text in all_body_text.values():
-    clean_tokens.append( [porter_stemmer.stem(t) for t in 
-                          ifilter(lambda w : w not in stopwords.words('english') 
-                                  and len(w) > 1 and not w.isdigit(), 
-                                  word_tokenize(text))] )
-# pprint(clean_tokens)
-#     print(clean_tokens)
-#     print(len(clean_tokens))
-
-# tokens = [word_tokenize(text) for text in all_body_text.values()]
-
-# clean_tokens = []
-# for d in tokens:
-#     clean_tokens.append([porter_stemmer.stem(w) for w in d 
-#                          if w.lower() not in stopwords.words('english')])
-
-# pprint(clean_tokens)
-print("\nBuilding LDA dictionary...")
-dictionary = corpora.Dictionary(clean_tokens)
-print("Converting doc to bow...")
-corpus = [dictionary.doc2bow(d) for d in clean_tokens]
-print("Creating the MM file...")
-corpora.MmCorpus.serialize('lda.mm', corpus)
-mm = corpora.MmCorpus('lda.mm')
-print("Building LDA model...")
-lda = models.ldamodel.LdaModel(corpus=mm, num_topics=30)
-print("A LDA model is built.\n")
-doc_lda = lda[dictionary.doc2bow(['ability', 'bellyoyo', 'activated', 'activity', 'add'])]
-pprint(doc_lda)
-
-"""
-doc_lda = 
-[(0, 0.81995379945948721),
- (1, 0.020003070630106111),
- (2, 0.020007821929791454),
- (3, 0.020005859522950798),
- (4, 0.020007262959776777),
- (5, 0.020002932567543413),
- (6, 0.020003773871628584),
- (7, 0.020005253893555897),
- (8, 0.02000451943754944),
- (9, 0.020005705727610398)]
-"""
-
-
-""" Calculate TF-IDF over all pages """
-print("Calculating TF-IDF for", len(all_body_text), "pages")
-tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=0, max_features=500,
-                                   token_pattern=r'(?u)\b[a-zA-Z]+\b')
-tfidf_vectorizer.fit(all_body_text.values())
-# print(len(tfidf_vectorizer.get_feature_names()))
-# print(tfidf_vectorizer.get_feature_names())
-# print(tfidf_vectorizer.transform(['ability bellyoyo activated activity add']))
-# print(tfidf_vectorizer.transform(['ability bellyoyo activated activity add']).nonzero()[1])
-# for i in tfidf_vectorizer.transform(['ability bellyoyo activated activity add']).nonzero()[1]:
-#     print(i)
-
-
-
-
-
-# """ Build RecsysMatrix, which rank users and pages by frequency"""
-
-
-
-
-
 
 user_freq2 = defaultdict(int)
 page_freq2 = defaultdict(int)
@@ -310,6 +252,7 @@ print( Counter(page_freq2.values()).most_common() )
 
 print(sorted(Counter(user_freq2.values()).most_common(), key=lambda x:x[0], reverse=False))
 print(sorted(Counter(page_freq2.values()).most_common(), key=lambda x:x[0], reverse=False))
+
 
 
 
@@ -359,6 +302,8 @@ print("\n=============== Separating Training and Test Data ================")
 """ Randomly pick 10% training and test instances """
 training_set = []
 test_set = []
+all_training_text = defaultdict(str) # url -> body_text
+all_test_text = defaultdict(str)
 # users_have_been_in_test = set()
 # pages_have_been_in_test = set()
 for pv in filtered_pageviews:
@@ -369,16 +314,69 @@ for pv in filtered_pageviews:
     if ( user_freq2[pv.uid] > fups.COLD_START_THRESHOLD and 
          page_freq2[pv.url] > fups.COLD_START_THRESHOLD ):
         test_set.append(pv)
+        all_test_text[pv.url] = get_body_text(pv.url)
         user_freq2[pv.uid] -= 1
         page_freq2[pv.url] -= 1
     else:
         training_set.append(pv)
+        all_training_text[pv.url] = get_body_text(pv.url)
         
 print()
 print(len(training_set), "pageviews in the training set")
 print(len(test_set), "pageviews in the test set")
 print("The fraction is", len(test_set) / float(valid_pv_num2))
 print()
+
+
+
+
+
+""" Build LDA Model """
+clean_tokens = []
+for text in all_training_text.values():
+    clean_tokens.append( [porter_stemmer.stem(t) for t in 
+                          ifilter(lambda w : w not in stopwords.words('english') 
+                                  and len(w) > 1 and not w.isdigit(), 
+                                  word_tokenize(text))] )
+
+
+print("\nBuilding LDA dictionary...")
+dictionary = corpora.Dictionary(clean_tokens)
+print("Converting doc to bow...")
+corpus = [dictionary.doc2bow(d) for d in clean_tokens]
+print("Creating the MM file...")
+corpora.MmCorpus.serialize('lda.mm', corpus)
+mm = corpora.MmCorpus('lda.mm')
+print("Building a LDA model for", int(sqrt(len(all_training_text))), "topics ...")
+lda = models.ldamodel.LdaModel(corpus=mm, num_topics=int(sqrt(len(all_training_text))))
+print("A LDA model is built.\n")
+
+doc_lda = lda[dictionary.doc2bow(clean_tokens[0])]
+pprint(doc_lda)
+
+"""
+doc_lda = 
+[(0, 0.81995379945948721),
+ (1, 0.020003070630106111),
+ (2, 0.020007821929791454),
+ (3, 0.020005859522950798),
+ (4, 0.020007262959776777),
+ (5, 0.020002932567543413),
+ (6, 0.020003773871628584),
+ (7, 0.020005253893555897),
+ (8, 0.02000451943754944),
+ (9, 0.020005705727610398)]
+"""
+
+
+""" Calculate TF-IDF over all pages """
+print("Calculating TF-IDF for", len(all_training_text), "pages")
+tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=0, max_features=500,
+                                   token_pattern=r'(?u)\b[a-zA-Z]+\b')
+tfidf_vectorizer.fit(all_training_text.values())
+
+
+
 
 
 """ Plot the distribution of screen and viewport """    
