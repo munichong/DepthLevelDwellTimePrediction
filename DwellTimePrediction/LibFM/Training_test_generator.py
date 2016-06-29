@@ -79,7 +79,7 @@ def get_article_info(userlog_url, pv_start_time):
         freshness = get_freshness(doc, pv_start_time)
         
         return body_length, channel.lower(), channel_group, freshness
-    return ['unknown'] * 4
+    return ['unknown', 'unknown', ['unknown'], 'unknown']
 
 def get_body_text(userlog_url):
     for doc in articleInfo.find({'URL_IN_USERLOG':userlog_url}):
@@ -138,11 +138,11 @@ for user_doc in fups.freq_uids: # for each unique user
     """ for each page view """
     for pv_doc in userlog.find({'uid':uid}):
         url = pv_doc['url']
-        unix_start_time = pv_doc['unix_start_time']
-             
-        
-        if unix_start_time < 1449792000 or unix_start_time > 1450656000:
-            continue
+#         unix_start_time = pv_doc['unix_start_time']
+#              
+#         
+#         if unix_start_time < 1449792000 or unix_start_time > 1450656000:
+#             continue
         
         """ if this page is not a frequent page """
         if url not in fups.freq_page_set:
