@@ -70,8 +70,8 @@ for train_data in ttg.training_set:
 #     X_train.append( {'device': device, 'length': length, 'channel': channel, 'depth':float(depth)} )
 #     X_train.append( {'device': device, 'length': length, 'channel': channel, 'viewport1':int(viewport.split('x')[0]), 'viewport2':int(viewport.split('x')[1]), 'depth':float(depth)} )
 #     X_train.append( {'device': device, 'length': length, 'channel': channel, 'viewport':viewport, 'depth':float(depth)} )
-#     X_train.append( {'viewport':viewport, 'depth':float(depth)} )
-    X_train.append( {'viewport1':int(viewport.split('x')[0]), 'viewport2':int(viewport.split('x')[1]), 'depth':float(depth)} )
+    X_train.append( {'viewport':viewport, 'depth':float(depth)} )
+#     X_train.append( {'viewport1':int(viewport.split('x')[0]), 'viewport2':int(viewport.split('x')[1]), 'depth':float(depth)} )
     y_train_regress.append(float(dwell))
     y_train_classify.append(1 if dwell >= required_dwell_time else 0)
 

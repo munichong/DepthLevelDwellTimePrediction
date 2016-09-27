@@ -12,17 +12,16 @@ from pymongo import MongoClient
 from BasicInvestigation.dwell_time_calculation import get_depth_dwell_time
 from LibFM import FreqUserPageSearcher as fups
 from _collections import defaultdict
-from dateutil import parser
 from bs4 import BeautifulSoup
-from datetime import datetime
 from nltk.stem.porter import PorterStemmer
 from nltk import word_tokenize
 from nltk.corpus import stopwords
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from gensim import corpora, similarities, models
+from sklearn.feature_extraction.text import TfidfVectorizer
+from gensim import corpora, models
 import matplotlib.pyplot as plt
-from bottleneck.nonreduce import replace
-from itertools import ifilter
+from gensim.models import Doc2Vec
+from gensim.models.doc2vec import LabeledSentence
+# from itertools import ifilter
 
   
 
@@ -90,7 +89,7 @@ def get_body_text(userlog_url):
         else:
             body_text = 'unknown'
         
-        return body_text
+        return body_text.lower()
     return 'unknown'
 
 
@@ -126,7 +125,6 @@ user_freq = defaultdict(int); page_freq = defaultdict(int);
 # channel_dist = defaultdict(int)
 # fresh_dist = defaultdict(int)
 
-porter_stemmer = PorterStemmer()
 
 all_pageviews = []
 for user_doc in fups.freq_uids: # for each unique user
@@ -138,11 +136,11 @@ for user_doc in fups.freq_uids: # for each unique user
     """ for each page view """
     for pv_doc in userlog.find({'uid':uid}):
         url = pv_doc['url']
-#         unix_start_time = pv_doc['unix_start_time']
-#              
-#         
-#         if unix_start_time < 1449792000 or unix_start_time > 1450656000:
-#             continue
+        unix_start_time = pv_doc['unix_start_time']
+              
+         
+        if unix_start_time < 1449792000 or unix_start_time > 1450656000:
+            continue
         
         """ if this page is not a frequent page """
         if url not in fups.freq_page_set:
@@ -299,7 +297,7 @@ print(sorted(Counter(page_freq2.values()).most_common(), key=lambda x:x[0], reve
 
 
 print("\n=============== Separating Training and Test Data ================")
-""" Randomly pick 10% training and test instances """
+""" Randomly pick training and test instances """
 training_set = []
 test_set = []
 all_training_text = defaultdict(str) # url -> body_text
@@ -310,16 +308,20 @@ for pv in filtered_pageviews:
 #     if ( user_freq2[uid] < fups.COLD_START_THRESHOLD or 
 #         page_freq2[url] < fups.COLD_START_THRESHOLD ):
 #         continue
-     
+    body_text = get_body_text(pv.url)
+    # if len(test_set) / float(len(training_set) + len(test_set)) < 0.1 and 
     if ( user_freq2[pv.uid] > fups.COLD_START_THRESHOLD and 
          page_freq2[pv.url] > fups.COLD_START_THRESHOLD ):
         test_set.append(pv)
-        all_test_text[pv.url] = get_body_text(pv.url)
+        if body_text != 'unknown':
+            all_test_text[pv.url] = body_text
         user_freq2[pv.uid] -= 1
         page_freq2[pv.url] -= 1
     else:
         training_set.append(pv)
-        all_training_text[pv.url] = get_body_text(pv.url)
+        if body_text != 'unknown':
+            all_training_text[pv.url] = body_text
+            
         
 print()
 print(len(training_set), "pageviews in the training set")
@@ -329,53 +331,91 @@ print()
 
 
 
+# porter_stemmer = PorterStemmer()
+# 
+# """ Build LDA Model (over both training and test pages) """
+# clean_tokens = []
+# for text in all_training_text.values() + all_test_text.values():
+#     tmp_tokens = [porter_stemmer.stem(t) for t in 
+#                           ifilter(lambda w : w.isalpha() and len(w) > 1 and
+#                                   w not in stopwords.words('english'), 
+#                                   word_tokenize(text.lower()))]
+#     if not tmp_tokens:
+#         ''' Pages whose body text is just "\u4154132" will have [] tmp_tokens '''
+#         tmp_tokens = ['unknown']
+#     
+#     clean_tokens.append(tmp_tokens)
+# 
+# 
+# print("\nBuilding LDA dictionary...")
+# dictionary = corpora.Dictionary(clean_tokens)
+# print("Converting doc to bow...")
+# corpus = [dictionary.doc2bow(d) for d in clean_tokens]
+# print("Creating the MM file...")
+# corpora.MmCorpus.serialize('lda.mm', corpus)
+# mm = corpora.MmCorpus('lda.mm')
+# # print("Building a LDA model for", int(sqrt(len(all_training_text))), "topics ...")
+# # lda = models.ldamodel.LdaModel(corpus=mm, num_topics=int(sqrt(len(all_training_text))))
+# 
+# print("Building a LDA model for", 20, "topics ...") # *** If change the number of topics, change the output filename in LibFMInputPreparation as well ***
+# lda = models.ldamodel.LdaModel(corpus=mm, num_topics=20)
+# print("A LDA model is built.\n")
+# 
+# doc_lda = lda[dictionary.doc2bow(clean_tokens[0])]
+# pprint(doc_lda)
+# 
+# """
+# doc_lda = 
+# [(0, 0.81995379945948721),
+#  (1, 0.020003070630106111),
+#  (2, 0.020007821929791454),
+#  (3, 0.020005859522950798),
+#  (4, 0.020007262959776777),
+#  (5, 0.020002932567543413),
+#  (6, 0.020003773871628584),
+#  (7, 0.020005253893555897),
+#  (8, 0.02000451943754944),
+#  (9, 0.020005705727610398)]
+# """
 
 
-""" Build LDA Model """
-clean_tokens = []
-for text in all_training_text.values():
-    clean_tokens.append( [porter_stemmer.stem(t) for t in 
-                          ifilter(lambda w : w not in stopwords.words('english') 
-                                  and len(w) > 1 and not w.isdigit(), 
-                                  word_tokenize(text))] )
+
+""" Building Doc2Vec Model (over both training and test pages) """
+# class LabeledLineSentence(object):
+#     def __init__(self, tokens):
+#         self.tokens = tokens
+#     def __iter__(self):
+#         for pageid, doc_tokens in enumerate(self.tokens):
+#             yield LabeledSentence(doc_tokens, ['PAGE_%s' % pageid])
+# 
+# model = Doc2Vec(size=100, window=8, min_count=0, workers=4)
+# labeled_documents = LabeledLineSentence(clean_tokens)
+# model.build_vocab(labeled_documents)
+# model.train(labeled_documents)
+
+# print("Doc2Vec: Creating LabelSentences")
+# clean_tokens = [LabeledSentence(clean_tokens[i], ['PAGE_%s' % i]) 
+#                 for i in range(len(clean_tokens))]  
+# print(len(clean_tokens), "articles")  
+# doc2vec_model = Doc2Vec(size=20, window=10, min_alpha=0.025, min_count=1, workers=4)
+# print("Doc2Vec: Building Vocabulary")
+# doc2vec_model.build_vocab(clean_tokens)
+# print("Doc2Vec: Training")
+# doc2vec_model.train(clean_tokens)
+# print("Doc2Vec: Store the model to mmap-able files")
+# doc2vec_model.save('../my_model.doc2vec')
+# load the model back
+# doc2vec_model = Doc2Vec.load('/my_model.doc2vec')
 
 
-print("\nBuilding LDA dictionary...")
-dictionary = corpora.Dictionary(clean_tokens)
-print("Converting doc to bow...")
-corpus = [dictionary.doc2bow(d) for d in clean_tokens]
-print("Creating the MM file...")
-corpora.MmCorpus.serialize('lda.mm', corpus)
-mm = corpora.MmCorpus('lda.mm')
-print("Building a LDA model for", int(sqrt(len(all_training_text))), "topics ...")
-lda = models.ldamodel.LdaModel(corpus=mm, num_topics=int(sqrt(len(all_training_text))))
-print("A LDA model is built.\n")
 
-doc_lda = lda[dictionary.doc2bow(clean_tokens[0])]
-pprint(doc_lda)
-
-"""
-doc_lda = 
-[(0, 0.81995379945948721),
- (1, 0.020003070630106111),
- (2, 0.020007821929791454),
- (3, 0.020005859522950798),
- (4, 0.020007262959776777),
- (5, 0.020002932567543413),
- (6, 0.020003773871628584),
- (7, 0.020005253893555897),
- (8, 0.02000451943754944),
- (9, 0.020005705727610398)]
-"""
-
-
-""" Calculate TF-IDF over all pages """
-print("Calculating TF-IDF for", len(all_training_text), "pages")
-tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=0, max_features=500,
+""" Calculate TF-IDF over all pages (over both training and test pages) """
+print("Calculating TF-IDF for", len(all_training_text) + len(all_test_text), "pages")
+tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=1, max_features=500,
                                    token_pattern=r'(?u)\b[a-zA-Z]+\b')
-tfidf_vectorizer.fit(all_training_text.values())
+tfidf_vectorizer.fit(list(all_training_text.values()) + list(all_test_text.values()))
 
-
+print("Finish Training_test_generator module")
 
 
 

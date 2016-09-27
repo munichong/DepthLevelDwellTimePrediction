@@ -18,6 +18,7 @@ userlog = client['Forbes_Dec2015']['FreqUserLogPV']
 
 user_freq_table = client['Forbes_Dec2015']['UserFreq_all'] # NEW; WAS: UserFreq_training
 user_freq_table.create_index([('uid', HASHED)])
+user_freq_table.create_index([('freq', 1)])
 unique_uid = defaultdict(int)
   
 n = 0
@@ -48,6 +49,7 @@ unique_uid.clear()
 # 
 # page_freq_table = client['Forbes_Dec2015']['PageFreq_all'] # NEW; WAS: PageFreq_training
 # page_freq_table.create_index([('url', HASHED)])
+# page_freq_table.create_index([('freq', 1)])
 # 
 # n = 0
 # for pv_doc in userlog.find({'unix_start_time': {"$gte":TRAINING_START, "$lte":TEST_END}}):

@@ -4,8 +4,8 @@ Created on Jan 23, 2016
 @author: Wang
 '''
 from pymongo import MongoClient 
-
-from numpy import array
+from collections import defaultdict
+from numpy import array, mean
 import numpy as np
 # import pylab as plt
 import matplotlib.pyplot as plt
@@ -18,7 +18,6 @@ from scipy.cluster.vq import kmeans,vq
 from scipy.spatial.distance import cdist
 
 
-
 client = MongoClient()
 featVec_DB = client['Forbes_Dec2015']['FreqUserLogPV']
 
@@ -26,7 +25,8 @@ featVec_DB = client['Forbes_Dec2015']['FreqUserLogPV']
 
 def dwelltime_trend_visualization():
     matrix = []
-    n = 0    
+    n = 0  
+    logs = []  
     for pv_doc in featVec_DB.find():
     #     ''' skip pageviews which only has 0 or 1 log '''
     #     if len(pv_doc['loglist']) <= 1:
@@ -34,7 +34,7 @@ def dwelltime_trend_visualization():
         print(n)
         n += 1
         
-        if n > 2000:
+        if n > 6000:
             break
         
         pv_summary = [] # [[screen_top, screen_bottom, dwell_time], [ ... ]]
@@ -49,7 +49,7 @@ def dwelltime_trend_visualization():
                 screen_top = additionalinfo['Percentage reading from']
                 screen_bottom = additionalinfo['Percentage of reading']
                 dwell_time = additionalinfo['Time on article']
-                if dwell_time > 120:
+                if dwell_time > 300:
                     skip_pageview = True
                     break
                 
@@ -75,14 +75,19 @@ def dwelltime_trend_visualization():
             else:
                 continue
         
-        vector = [0] * 101   
+        logs.append(pv_summary)
+        dwell_collector = defaultdict(list)
         if not skip_pageview:
             ''' Content area overlap is allowed '''
             for screen_top, screen_bottom, dwell_time in pv_summary:
                 for depth in range(screen_top, screen_bottom + 1):
-                    vector[depth] += dwell_time    
-            matrix.append(vector[1:])      
-   
+                    dwell_collector[depth].append(dwell_time)    
+            
+            vector = [0] * 101
+            for depth in range(101):
+                vector[depth] = mean(dwell_collector[depth]) if depth in dwell_collector else 0
+            matrix.append(vector[1:])
+    
     
     raw_matrix = array(matrix).astype(float)
     
@@ -95,7 +100,7 @@ def dwelltime_trend_visualization():
     print()
     
     ''' elbow '''
-    K = range(1,21)
+    K = range(1,10)
     KM = [kmeans(matrix, k) for k in K]
     centroids = [cent for (cent,var) in KM]
 #     print(len(centroids))
@@ -148,16 +153,16 @@ def dwelltime_trend_visualization():
     
     
     ''' PCA '''
-#    pca = PCA(n_components=2)
-#    matrix_2d = pca.fit_transform(matrix)
-#    print(matrix)
-#    print()
-    
-    ''' MDS '''
-    mds = MDS(n_components=2)
-    matrix_2d = mds.fit_transform(matrix)
+    pca = PCA(n_components=2)
+    matrix_2d = pca.fit_transform(matrix)
     print(matrix)
     print()
+    
+    ''' MDS '''
+#     mds = MDS(n_components=2)
+#     matrix_2d = mds.fit_transform(matrix)
+#     print(matrix)
+#     print()
     
     ''' 2D '''
 #     plt.scatter(matrix.T[0], matrix.T[1], color='blue', marker='.')
@@ -182,44 +187,85 @@ def dwelltime_trend_visualization():
     ax = fig.add_subplot(111)
     handles = []
 #     print(cIdx[3])
-    handles.append(ax.scatter(matrix_2d.T[0][cIdx[3] == 0], matrix_2d.T[1][cIdx[3] == 0],
+    colors = ['blue', 'red', 'green', 'magenta', 'purple']
+    handles.append(ax.scatter(matrix_2d.T[0][cIdx[4] == 0], matrix_2d.T[1][cIdx[4] == 0],
                               color='blue', marker='.'))
-    handles.append(ax.scatter(matrix_2d.T[0][cIdx[3] == 1], matrix_2d.T[1][cIdx[3] == 1],
+    handles.append(ax.scatter(matrix_2d.T[0][cIdx[4] == 1], matrix_2d.T[1][cIdx[4] == 1],
                               color='red', marker='.'))
-    handles.append(ax.scatter(matrix_2d.T[0][cIdx[3] == 2], matrix_2d.T[1][cIdx[3] == 2],
+    handles.append(ax.scatter(matrix_2d.T[0][cIdx[4] == 2], matrix_2d.T[1][cIdx[4] == 2],
                               color='green', marker='.'))
-    handles.append(ax.scatter(matrix_2d.T[0][cIdx[3] == 3], matrix_2d.T[1][cIdx[3] == 3],
+    handles.append(ax.scatter(matrix_2d.T[0][cIdx[4] == 3], matrix_2d.T[1][cIdx[4] == 3],
                               color='magenta', marker='.'))
-#     handles.append(ax.scatter(matrix_2d.T[0][cIdx[4] == 4], matrix_2d.T[1][cIdx[4] == 4],
-#                               color='purple', marker='.'))
+    handles.append(ax.scatter(matrix_2d.T[0][cIdx[4] == 4], matrix_2d.T[1][cIdx[4] == 4],
+                              color='purple', marker='.'))
     plt.grid(True)
     plt.show()
-    
-    
+            
+        
     ''' individual check '''
-#     example_blue = matrix[cIdx[3] == 0]
-#     example_red = matrix[cIdx[3] == 1]
-#     example_green = matrix[cIdx[3] == 2]
-#     example_magenta = matrix[cIdx[3] == 3]
-#     print('\nBLUE:')
-#     print(example_blue[:3])
-#     print('\nRED:')
-#     print(example_red[:3])
-#     print('\nGREEN:')
-#     print(example_green[:3])
-#     print('\nMAGENTA:')
-#     print(example_magenta[:3])
+    example_blue = matrix[cIdx[4] == 0]
+    example_red = matrix[cIdx[4] == 1]
+    example_green = matrix[cIdx[4] == 2]
+    example_magenta = matrix[cIdx[4] == 3]
+    example_purple = matrix[cIdx[4] == 4]
+    print('\nBLUE:')
+    print(example_blue[:10])
+    print('\nRED:')
+    print(example_red[:10])
+    print('\nGREEN:')
+    print(example_green[:10])
+    print('\nMAGENTA:')
+    print(example_magenta[:10])
+    print('\nPURPLE:')
+    print(example_purple[:10])
     
     
     ''' plot centroids '''
-    centroids_k = centroids[3]
+    centroids_k = centroids[4]
     print(len(centroids_k), 'centroids')
     for cent in centroids_k:
         fig = plt.figure()
         ax = fig.add_subplot(111)
+        ax.set_xlim([0,100])
+        ax.set_ylim([0,0.08])
         ax.plot(range(1, 101), cent, 'b*-')
         plt.grid(True)
         plt.show()
+
+
+    ''' Check Last Dwell Time VS. Current Dwell Time of A Cluster'''
+    for cluster_index in range(4+1):
+        last_dwells = []
+        current_dwells = []
+        print(colors[cluster_index])
+        
+        for instance_index in range(len(cIdx[4])):
+            in_cluster = cIdx[4][instance_index] == cluster_index
+            if not in_cluster:
+                continue
+            for action_index in range(len(logs[instance_index])):
+                # if this action is the last one in this pageview
+                if action_index+1 == len(logs[instance_index]):
+                    break
+                if logs[instance_index][action_index+1][1] > 50:
+                    break
+                last_dwells.append(logs[instance_index][action_index][2])
+                current_dwells.append(logs[instance_index][action_index+1][2])
+            print(logs[instance_index])
+            
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_xlim([0,50])
+        ax.set_ylim([0,50])
+        ax.scatter(last_dwells, current_dwells, color='blue', marker='.')
+        plt.grid(True)
+        plt.show()
+        
+        # print points
+#         for i in range(len(last_dwells)):
+#             print("%f,%f" % (last_dwells[i], current_dwells[i]))
+#         print()
+
     
 
 if __name__ == "__main__":

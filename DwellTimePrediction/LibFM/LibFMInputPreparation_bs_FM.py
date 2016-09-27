@@ -9,7 +9,13 @@ from _collections import defaultdict
 from LibFM import Training_test_generator as ttg
 from math import sqrt
 from numpy import mean, median, array
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, log_loss
+from gensim.models import Doc2Vec, ldamodel
+from gensim import corpora
+from sklearn.preprocessing import normalize
+import scipy as sp
+
+
 
 
 client = MongoClient()
@@ -32,8 +38,19 @@ length_libfm_output = open('../data_bs/length.libfm', 'w')
 channel_libfm_output = open('../data_bs/channel.libfm', 'w')
 channelgroup_libfm_output = open('../data_bs/channel_group.libfm', 'w')
 fresh_libfm_output = open('../data_bs/fresh.libfm', 'w')
-keyword_libfm_output = open('../data_bs/keyword.libfm', 'w')
-topic_libfm_output = open('../data_bs/topic.libfm', 'w')
+# keyword_libfm_output = open('../data_bs/keyword.libfm', 'w')
+# topic10_libfm_output = open('../data_bs/topic_10.libfm', 'w')
+# topicgroup10_libfm_output = open('../data_bs/topic_group_10.libfm', 'w')
+# topic20_libfm_output = open('../data_bs/topic_20.libfm', 'w')
+# topicgroup20_libfm_output = open('../data_bs/topic_group_20.libfm', 'w')
+# topic30_libfm_output = open('../data_bs/topic_30.libfm', 'w')
+# topicgroup30_libfm_output = open('../data_bs/topic_group_30.libfm', 'w')
+# topic40_libfm_output = open('../data_bs/topic_40.libfm', 'w')
+# topicgroup40_libfm_output = open('../data_bs/topic_group_40.libfm', 'w')
+# d2v50_libfm_output = open('../data_bs/doc2vec_50.libfm', 'w')
+# d2v100_libfm_output = open('../data_bs/doc2vec_100.libfm', 'w')
+# d2v150_libfm_output = open('../data_bs/doc2vec_150.libfm', 'w')
+# d2v200_libfm_output = open('../data_bs/doc2vec_200.libfm', 'w')
 
 
 user_train_output = open('../data_bs/user.train', 'w')
@@ -52,8 +69,19 @@ length_train_output = open('../data_bs/length.train', 'w')
 channel_train_output = open('../data_bs/channel.train', 'w')
 channelgroup_train_output = open('../data_bs/channel_group.train', 'w')
 fresh_train_output = open('../data_bs/fresh.train', 'w')
-keyword_train_output = open('../data_bs/keyword.train', 'w')
-topic_train_output = open('../data_bs/topic.train', 'w')
+# keyword_train_output = open('../data_bs/keyword.train', 'w')
+# topic10_train_output = open('../data_bs/topic_10.train', 'w')
+# topicgroup10_train_output = open('../data_bs/topic_group_10.train', 'w')
+# topic20_train_output = open('../data_bs/topic_20.train', 'w')
+# topicgroup20_train_output = open('../data_bs/topic_group_20.train', 'w')
+# topic30_train_output = open('../data_bs/topic_30.train', 'w')
+# topicgroup30_train_output = open('../data_bs/topic_group_30.train', 'w')
+# topic40_train_output = open('../data_bs/topic_40.train', 'w')
+# topicgroup40_train_output = open('../data_bs/topic_group_40.train', 'w')
+# d2v50_train_output = open('../data_bs/doc2vec_50.train', 'w')
+# d2v100_train_output = open('../data_bs/doc2vec_100.train', 'w')
+# d2v150_train_output = open('../data_bs/doc2vec_150.train', 'w')
+# d2v200_train_output = open('../data_bs/doc2vec_200.train', 'w')
 y_train_output = open('../data_bs/y.train', 'w')
 
 user_test_output = open('../data_bs/user.test', 'w')
@@ -72,8 +100,19 @@ length_test_output = open('../data_bs/length.test', 'w')
 channel_test_output = open('../data_bs/channel.test', 'w')
 channelgroup_test_output = open('../data_bs/channel_group.test', 'w')
 fresh_test_output = open('../data_bs/fresh.test', 'w')
-keyword_test_output = open('../data_bs/keyword.test', 'w')
-topic_test_output = open('../data_bs/topic.test', 'w')
+# keyword_test_output = open('../data_bs/keyword.test', 'w')
+# topic10_test_output = open('../data_bs/topic_10.test', 'w')
+# topicgroup10_test_output = open('../data_bs/topic_group_10.test', 'w')
+# topic20_test_output = open('../data_bs/topic_20.test', 'w')
+# topicgroup20_test_output = open('../data_bs/topic_group_20.test', 'w')
+# topic30_test_output = open('../data_bs/topic_30.test', 'w')
+# topicgroup30_test_output = open('../data_bs/topic_group_30.test', 'w')
+# topic40_test_output = open('../data_bs/topic_40.test', 'w')
+# topicgroup40_test_output = open('../data_bs/topic_group_40.test', 'w')
+# d2v50_test_output = open('../data_bs/doc2vec_50.test', 'w')
+# d2v100_test_output = open('../data_bs/doc2vec_100.test', 'w')
+# d2v150_test_output = open('../data_bs/doc2vec_150.test', 'w')
+# d2v200_test_output = open('../data_bs/doc2vec_200.test', 'w')
 y_test_output = open('../data_bs/y.test', 'w')
 
 
@@ -112,12 +151,18 @@ def get_area_text(top, bottom, fulltext):
     return fulltext.split()[from_top : to_bottom]
 #     return [ ' '.join(fulltext.split()[from_top : to_bottom]) ]
 
-def get_lda_topic(text):
-    topic_dist = ttg.lda[ttg.dictionary.doc2bow(text)]
-#     print(topic_dist)
-#     print(max(topic_dist, key=operator.itemgetter(1)))
-    return max(topic_dist, key=operator.itemgetter(1)) # (topic_index, probability)
+# def get_lda_topic(lda, text):
+#     topic_dist = lda[lda_dict.doc2bow(text)]
+#     
+#     return [str(t[0]) for t in topic_dist], [str(t[1]) for t in topic_dist], max(topic_dist, key=operator.itemgetter(1))
 
+def logloss(act, pred):
+    epsilon = 1e-15
+    pred = sp.maximum(epsilon, pred)
+    pred = sp.minimum(1-epsilon, pred)
+    ll = sum(act*sp.log(pred) + sp.subtract(1,act)*sp.log(sp.subtract(1,pred)))
+    ll = ll * -1.0/len(act)
+    return ll
 
 
 ''' get index lookup table for each feature '''
@@ -137,17 +182,40 @@ channel_index_lookup = defaultdict(int)
 channelgroup_index_lookup = defaultdict(int)
 fresh_index_lookup = defaultdict(int)
 keyword_index_lookup = defaultdict(int)
-topic_index_lookup = defaultdict(int)
+topic10_index_lookup = defaultdict(int)
+topicgroup10_index_lookup = defaultdict(int)
+topic20_index_lookup = defaultdict(int)
+topicgroup20_index_lookup = defaultdict(int)
+topic30_index_lookup = defaultdict(int)
+topicgroup30_index_lookup = defaultdict(int)
+topic40_index_lookup = defaultdict(int)
+topicgroup40_index_lookup = defaultdict(int)
+d2v50_index_lookup = defaultdict(int)
+d2v100_index_lookup = defaultdict(int)
+d2v150_index_lookup = defaultdict(int)
+d2v200_index_lookup = defaultdict(int)
+
 
 ''' For BASELINE '''
-dwell_depth_list = defaultdict(list)
-dwell_user_depth_list = defaultdict(dict)
-dwell_page_depth_list = defaultdict(dict)
+dwell_depth_dict = defaultdict(list)
+dwell_user_depth_dict = defaultdict(lambda:defaultdict(list))
+dwell_page_depth_dict = defaultdict(lambda:defaultdict(list))
 
 
 # screen_val_dist = defaultdict(int)
 # viewport_val_dist = defaultdict(int)
 
+
+# load the model back
+# doc2vec_50 = Doc2Vec.load('../doc2vec_models/d2v_model_50.doc2vec')
+# doc2vec_100 = Doc2Vec.load('../doc2vec_models/d2v_model_100.doc2vec')
+# doc2vec_150 = Doc2Vec.load('../doc2vec_models/d2v_model_150.doc2vec')
+# doc2vec_200 = Doc2Vec.load('../doc2vec_models/d2v_model_200.doc2vec')
+# lda_10 = ldamodel.LdaModel.load('../lda_models/lda_model_10.lda', mmap='r')
+# lda_20 = ldamodel.LdaModel.load('../lda_models/lda_model_20.lda', mmap='r')
+# lda_30 = ldamodel.LdaModel.load('../lda_models/lda_model_30.lda', mmap='r')
+# lda_40 = ldamodel.LdaModel.load('../lda_models/lda_model_40.lda', mmap='r')
+# lda_dict = corpora.dictionary.Dictionary.load('../lda_models/dictionary.dict', mmap='r')
 
 
 print("FM: Iterating through training data")
@@ -165,20 +233,39 @@ for training_pv in ttg.training_set:
         viewport_height = viewport.split('x')[0] if viewport != 'unknown' else 'unknown'
         viewport_width = viewport.split('x')[1] if viewport != 'unknown' else 'unknown'
         
-        area_text = get_area_text(top, bottom, ttg.all_training_text[url]) # e.g. ['abc', 'adsf', 'asde']
-#         print(ttg.tfidf_vectorizer.transform(area_text))
-        topic, _ = get_lda_topic(area_text)
-        topic = str(topic)
+#         if url in ttg.all_training_text:
+#             area_text = get_area_text(top, bottom, ttg.all_training_text[url]) # e.g. ['abc', 'adsf', 'asde']
+#             topic_indice_10, topic_values_10, (topic_index_10, _) = get_lda_topic(lda_10, area_text)
+#             topic_10 = str(topic_index_10)
+#             topicgroup_key_10 = ' '.join(topic_indice_10 + topic_values_10)
+#             topic_indice_20, topic_values_20, (topic_index_20, _) = get_lda_topic(lda_20, area_text)
+#             topic_20 = str(topic_index_20)
+#             topicgroup_key_20 = ' '.join(topic_indice_20 + topic_values_20)
+#             topic_indice_30, topic_values_30, (topic_index_30, _) = get_lda_topic(lda_30, area_text)
+#             topic_30 = str(topic_index_30)
+#             topicgroup_key_30 = ' '.join(topic_indice_30 + topic_values_30)
+#             topic_indice_40, topic_values_40, (topic_index_40, _) = get_lda_topic(lda_40, area_text)
+#             topic_40 = str(topic_index_40)
+#             topicgroup_key_40 = ' '.join(topic_indice_40 + topic_values_40)
         
         
-        area_text = [' '.join(area_text)] # e.g. ['abc adsf asde']
-        keyword_indice = sorted(list( ttg.tfidf_vectorizer.transform(area_text).nonzero()[1] ))
-#         print(len(keyword_indice))
-        if not keyword_indice:
-#             print("NO TF-IDF KEYWORDS ARE FOUND.")
-            area_text = get_area_text(top, bottom, ttg.all_training_text[url])
-        keyword_values = [1] * len(keyword_indice)
-        keyword_key = ' '.join([str(i) for i in keyword_indice])
+#             d2v_vec_50 = doc2vec_50.infer_vector(area_text)
+#             d2v_key_50 = ' '.join(str(v) for v in d2v_vec_50)
+#             d2v_vec_100 = doc2vec_100.infer_vector(area_text)
+#             d2v_key_100 = ' '.join(str(v) for v in d2v_vec_100)
+#             d2v_vec_150 = doc2vec_150.infer_vector(area_text)
+#             d2v_key_150 = ' '.join(str(v) for v in d2v_vec_150)
+#             d2v_vec_200 = doc2vec_200.infer_vector(area_text)
+#             d2v_key_200 = ' '.join(str(v) for v in d2v_vec_200)
+        
+#             area_text = [' '.join(area_text)] # e.g. ['abc adsf asde']
+#             keyword_indice = sorted(list( ttg.tfidf_vectorizer.transform(area_text).nonzero()[1] ))
+#             if not keyword_indice:
+# #                 print("NO TF-IDF KEYWORDS ARE FOUND.")
+#                 area_text = get_area_text(top, bottom, ttg.all_training_text[url])
+#             keyword_values = [1] * len(keyword_indice)
+#             keyword_key = ' '.join([str(i) for i in keyword_indice])
+        
         
         channelgroup_values = [1.0/len(channel_group)] * len(channel_group)
         channel_group_indice = [c.split('_')[-1] for c in channel_group]
@@ -206,9 +293,30 @@ for training_pv in ttg.training_set:
         write_new_featval_multi(channel_group_indice, channelgroup_values, channelgroup_key,
                                 channelgroup_index_lookup, channelgroup_libfm_output)
         write_new_featval(fresh, fresh_index_lookup, fresh_libfm_output)
-        write_new_featval_multi(keyword_indice, keyword_values, keyword_key,
-                                keyword_index_lookup, keyword_libfm_output)
-        write_new_featval(topic, topic_index_lookup, topic_libfm_output)
+        
+#         if url in ttg.all_training_text:
+#             write_new_featval_multi(keyword_indice, keyword_values, keyword_key,
+#                                 keyword_index_lookup, keyword_libfm_output)
+#             write_new_featval(topic_10, topic10_index_lookup, topic10_libfm_output)
+#             write_new_featval_multi(topic_indice_10, topic_values_10, topicgroup_key_10,
+#                                 topicgroup10_index_lookup, topicgroup10_libfm_output)
+#             write_new_featval(topic_20, topic20_index_lookup, topic20_libfm_output)
+#             write_new_featval_multi(topic_indice_20, topic_values_20, topicgroup_key_20,
+#                                 topicgroup20_index_lookup, topicgroup20_libfm_output)
+#             write_new_featval(topic_30, topic30_index_lookup, topic30_libfm_output)
+#             write_new_featval_multi(topic_indice_30, topic_values_30, topicgroup_key_30,
+#                                 topicgroup30_index_lookup, topicgroup30_libfm_output)
+#             write_new_featval(topic_40, topic40_index_lookup, topic40_libfm_output)
+#             write_new_featval_multi(topic_indice_40, topic_values_40, topicgroup_key_40,
+#                                 topicgroup40_index_lookup, topicgroup40_libfm_output)
+#             write_new_featval_multi(range(1, len(d2v_vec_50)+1), d2v_vec_50, d2v_key_50, 
+#                                 d2v50_index_lookup, d2v50_libfm_output)
+#             write_new_featval_multi(range(1, len(d2v_vec_100)+1), d2v_vec_100, d2v_key_100, 
+#                                 d2v100_index_lookup, d2v100_libfm_output)
+#             write_new_featval_multi(range(1, len(d2v_vec_150)+1), d2v_vec_150, d2v_key_150, 
+#                                 d2v150_index_lookup, d2v150_libfm_output)
+#             write_new_featval_multi(range(1, len(d2v_vec_200)+1), d2v_vec_200, d2v_key_200, 
+#                                 d2v200_index_lookup, d2v200_libfm_output)
         
         
         ''' Output to training files '''
@@ -228,49 +336,95 @@ for training_pv in ttg.training_set:
         channel_train_output.write(str(channel_index_lookup[channel]) + '\n')
         channelgroup_train_output.write(str(channelgroup_index_lookup[channelgroup_key]) + '\n')
         fresh_train_output.write(str(fresh_index_lookup[fresh]) + '\n')
-        keyword_train_output.write(str(keyword_index_lookup[keyword_key]) + '\n')
-        topic_train_output.write(str(topic_index_lookup[topic]) + '\n')
         
-    
+#         if url in ttg.all_training_text:
+#             keyword_train_output.write(str(keyword_index_lookup[keyword_key]) + '\n')
+#             topic10_train_output.write(str(topic10_index_lookup[topic_10]) + '\n')
+#             topicgroup10_train_output.write(str(topicgroup10_index_lookup[topicgroup_key_10]) + '\n')
+#             topic20_train_output.write(str(topic20_index_lookup[topic_20]) + '\n')
+#             topicgroup20_train_output.write(str(topicgroup20_index_lookup[topicgroup_key_20]) + '\n')
+#             topic30_train_output.write(str(topic30_index_lookup[topic_30]) + '\n')
+#             topicgroup30_train_output.write(str(topicgroup30_index_lookup[topicgroup_key_30]) + '\n')
+#             topic40_train_output.write(str(topic40_index_lookup[topic_40]) + '\n')
+#             topicgroup40_train_output.write(str(topicgroup40_index_lookup[topicgroup_key_40]) + '\n')
+#             d2v50_train_output.write(str(d2v50_index_lookup[d2v_key_50]) + '\n')
+#             d2v100_train_output.write(str(d2v100_index_lookup[d2v_key_100]) + '\n')
+#             d2v150_train_output.write(str(d2v150_index_lookup[d2v_key_150]) + '\n')
+#             d2v200_train_output.write(str(d2v200_index_lookup[d2v_key_200]) + '\n')
+
+
+        ''' dwell time prediction '''
         y_train_output.write(str(dwell) + '\n')
-
-
         ''' For baselines '''
-        dwell_depth_list[depth].append(dwell) 
-        
-        if depth in dwell_user_depth_list[uid]:
-            dwell_user_depth_list[uid][depth].append(dwell)
-        else:
-            dwell_user_depth_list[uid][depth] = [dwell]
+        dwell_depth_dict[depth].append(dwell)
+        dwell_user_depth_dict[uid][depth].append(dwell)
+        dwell_page_depth_dict[url][depth].append(dwell)
+    
+    
+        ''' viewability prediction '''  
+#         if dwell >= 10:
+#             y_train_output.write('1\n')
+#             ''' For baselines '''
+#             dwell_depth_dict[depth].append(1) 
+#             dwell_user_depth_dict[uid][depth].append(1)
+#             dwell_page_depth_dict[url][depth].append(1)
+#              
+#         else:
+#             y_train_output.write('0\n')
+#             ''' For baselines '''
+#             dwell_depth_dict[depth].append(0) 
+#             dwell_user_depth_dict[uid][depth].append(0)
+#             dwell_page_depth_dict[url][depth].append(0)
             
-        if depth in dwell_page_depth_list[url]:
-            dwell_page_depth_list[url][depth].append(dwell)
-        else:
-            dwell_page_depth_list[url][depth] = [dwell]
 
+
+# print(dwell_depth_dict[30])
+# print(list(dwell_user_depth_dict.items())[0])
+# print(list(dwell_page_depth_dict.items())[0])
+
+'''
+5s
+('LogLoss_gloablMEAN =', 0.65038167934570745)
+('LogLoss_userMEAN =', 0.98877404208284758)
+('LogLoss_pageMEAN =', 0.93869638785483234)
+
+7s:
+('LogLoss_gloablMEAN =', 0.63023544987234292)
+('LogLoss_userMEAN =', 0.97725477062906463)
+('LogLoss_pageMEAN =', 0.76804345977914845)
+
+10s:
+('LogLoss_gloablMEAN =', 0.56063854990284279)
+('LogLoss_userMEAN =', 1.4259755316961391)
+('LogLoss_pageMEAN =', 0.68864661902342794)
+'''
 
 ''' For baselines '''
 dwell_globaldepth_mean = defaultdict(float)
 dwell_globaldepth_median = defaultdict(float)
-for depth in dwell_depth_list:
-    dwell_globaldepth_mean[depth] = mean(dwell_depth_list[depth])
-    dwell_globaldepth_median[depth] = median(dwell_depth_list[depth])
+for depth in dwell_depth_dict:
+    dwell_globaldepth_mean[depth] = mean(dwell_depth_dict[depth])
+    dwell_globaldepth_median[depth] = median(dwell_depth_dict[depth])
 
 
 dwell_userdepth_mean = defaultdict(dict)
 dwell_userdepth_median = defaultdict(dict)
-for uid in dwell_user_depth_list:
-    for depth in dwell_user_depth_list[uid]:
-        dwell_userdepth_mean[uid][depth] = mean(dwell_user_depth_list[uid][depth])
-        dwell_userdepth_median[uid][depth] = median(dwell_user_depth_list[uid][depth])
+for uid in dwell_user_depth_dict:
+    for depth in dwell_user_depth_dict[uid]:
+        dwell_userdepth_mean[uid][depth] = mean(dwell_user_depth_dict[uid][depth])
+        dwell_userdepth_median[uid][depth] = median(dwell_user_depth_dict[uid][depth])
 
 dwell_pagedepth_mean = defaultdict(dict)
 dwell_pagedepth_median = defaultdict(dict)
-for url in dwell_page_depth_list:
-    for depth in dwell_page_depth_list[url]:
-        dwell_pagedepth_mean[url][depth] = mean(dwell_page_depth_list[url][depth])
-        dwell_pagedepth_median[url][depth] = median(dwell_page_depth_list[url][depth])
+for url in dwell_page_depth_dict:
+    for depth in dwell_page_depth_dict[url]:
+        dwell_pagedepth_mean[url][depth] = mean(dwell_page_depth_dict[url][depth])
+        dwell_pagedepth_median[url][depth] = median(dwell_page_depth_dict[url][depth])
 
+
+# print(dwell_globaldepth_mean)
+# print(dwell_userdepth_mean)
+# print(dwell_pagedepth_mean)
 
 
 
@@ -296,15 +450,37 @@ for test_pv in ttg.test_set:
         viewport_height = viewport.split('x')[0] if viewport != 'unknown' else 'unknown'
         viewport_width = viewport.split('x')[1] if viewport != 'unknown' else 'unknown'
         
-        area_text = get_area_text(top, bottom, ttg.all_test_text[url])
-        topic, _ = get_lda_topic(area_text)
-        topic = str(topic)
+        
+#         if url in ttg.all_test_text:
+#             area_text = get_area_text(top, bottom, ttg.all_test_text[url])
+#             topic_indice_10, topic_values_10, (topic_index_10, _) = get_lda_topic(lda_10, area_text)
+#             topic_10 = str(topic_index_10)
+#             topicgroup_key_10 = ' '.join(topic_indice_10 + topic_values_10)
+#             topic_indice_20, topic_values_20, (topic_index_20, _) = get_lda_topic(lda_20, area_text)
+#             topic_20 = str(topic_index_20)
+#             topicgroup_key_20 = ' '.join(topic_indice_20 + topic_values_20)
+#             topic_indice_30, topic_values_30, (topic_index_30, _) = get_lda_topic(lda_30, area_text)
+#             topic_30 = str(topic_index_30)
+#             topicgroup_key_30 = ' '.join(topic_indice_30 + topic_values_30)
+#             topic_indice_40, topic_values_40, (topic_index_40, _) = get_lda_topic(lda_40, area_text)
+#             topic_40 = str(topic_index_40)
+#             topicgroup_key_40 = ' '.join(topic_indice_40 + topic_values_40)
         
         
-        area_text = [' '.join(area_text)] # e.g. ['abc adsf asde']
-        keyword_indice = sorted(list( ttg.tfidf_vectorizer.transform(area_text).nonzero()[1] ))
-        keyword_values = [1] * len(keyword_indice)
-        keyword_key = ' '.join([str(i) for i in keyword_indice])
+#             d2v_vec_50 = doc2vec_50.infer_vector(area_text)
+#             d2v_key_50 = ' '.join(str(v) for v in d2v_vec_50)
+#             d2v_vec_100 = doc2vec_100.infer_vector(area_text)
+#             d2v_key_100 = ' '.join(str(v) for v in d2v_vec_100)
+#             d2v_vec_150 = doc2vec_150.infer_vector(area_text)
+#             d2v_key_150 = ' '.join(str(v) for v in d2v_vec_150)
+#             d2v_vec_200 = doc2vec_200.infer_vector(area_text)
+#             d2v_key_200 = ' '.join(str(v) for v in d2v_vec_200)
+        
+        
+#             area_text = [' '.join(area_text)] # e.g. ['abc adsf asde']
+#             keyword_indice = sorted(list( ttg.tfidf_vectorizer.transform(area_text).nonzero()[1] ))
+#             keyword_values = [1] * len(keyword_indice)
+#             keyword_key = ' '.join([str(i) for i in keyword_indice])
         
         channelgroup_values = [1.0/len(channel_group)] * len(channel_group)
 #         channel_group_indice = [c.split('_')[-1] for c in channel_group]
@@ -325,16 +501,32 @@ for test_pv in ttg.test_set:
              viewport_width not in viewport_width_index_lookup or 
              channel not in channel_index_lookup or 
              length not in length_index_lookup or 
-             fresh not in fresh_index_lookup or
-             topic not in topic_index_lookup
+             fresh not in fresh_index_lookup 
+#              topic_10 not in topic_index_lookup
             ):
             continue
         
         ''' Output features to .libfm files '''
-        write_new_featval_multi(keyword_indice, keyword_values, keyword_key,
-                                keyword_index_lookup, keyword_libfm_output) # write new keywords combination into libfm file
-        write_new_featval_multi(channel_group, channelgroup_values, channelgroup_key,
-                                channelgroup_index_lookup, channelgroup_libfm_output)
+#         write_new_featval_multi(keyword_indice, keyword_values, keyword_key,
+#                                 keyword_index_lookup, keyword_libfm_output) # write new keywords combination into libfm file
+#         write_new_featval_multi(channel_group, channelgroup_values, channelgroup_key,
+#                                 channelgroup_index_lookup, channelgroup_libfm_output)
+#         write_new_featval_multi(topic_indice_10, topic_values_10, topicgroup_key_10,
+#                                 topicgroup10_index_lookup, topicgroup10_libfm_output)
+#         write_new_featval_multi(topic_indice_20, topic_values_20, topicgroup_key_20,
+#                                 topicgroup20_index_lookup, topicgroup20_libfm_output)
+#         write_new_featval_multi(topic_indice_30, topic_values_30, topicgroup_key_30,
+#                                 topicgroup30_index_lookup, topicgroup30_libfm_output)
+#         write_new_featval_multi(topic_indice_40, topic_values_40, topicgroup_key_40,
+#                                 topicgroup40_index_lookup, topicgroup40_libfm_output)
+#         write_new_featval_multi(range(1, len(d2v_vec_50)+1), d2v_vec_50, d2v_key_50, 
+#                                 d2v50_index_lookup, d2v50_libfm_output)
+#         write_new_featval_multi(range(1, len(d2v_vec_100)+1), d2v_vec_100, d2v_key_100, 
+#                                 d2v100_index_lookup, d2v100_libfm_output)
+#         write_new_featval_multi(range(1, len(d2v_vec_150)+1), d2v_vec_150, d2v_key_150, 
+#                                 d2v150_index_lookup, d2v150_libfm_output)
+#         write_new_featval_multi(range(1, len(d2v_vec_200)+1), d2v_vec_200, d2v_key_200, 
+#                                 d2v200_index_lookup, d2v200_libfm_output)
         
         
         user_test_output.write(str(user_index_lookup[uid]) + '\n')
@@ -353,10 +545,36 @@ for test_pv in ttg.test_set:
         channel_test_output.write(str(channel_index_lookup[channel]) + '\n')
         channelgroup_test_output.write(str(channelgroup_index_lookup[channelgroup_key]) + '\n')
         fresh_test_output.write(str(fresh_index_lookup[fresh]) + '\n')
-        keyword_test_output.write(str(keyword_index_lookup[keyword_key]) + '\n')
-        topic_test_output.write(str(topic_index_lookup[topic]) + '\n')
+        
+#         if url in ttg.all_test_text:
+#             keyword_test_output.write(str(keyword_index_lookup[keyword_key]) + '\n')
+#             topic10_test_output.write(str(topic10_index_lookup[topic_10]) + '\n')
+#             topicgroup10_test_output.write(str(topicgroup10_index_lookup[topicgroup_key_10]) + '\n')
+#             topic20_test_output.write(str(topic20_index_lookup[topic_20]) + '\n')
+#             topicgroup20_test_output.write(str(topicgroup20_index_lookup[topicgroup_key_20]) + '\n')
+#             topic30_test_output.write(str(topic30_index_lookup[topic_30]) + '\n')
+#             topicgroup30_test_output.write(str(topicgroup30_index_lookup[topicgroup_key_30]) + '\n')
+#             topic40_test_output.write(str(topic40_index_lookup[topic_40]) + '\n')
+#             topicgroup40_test_output.write(str(topicgroup40_index_lookup[topicgroup_key_40]) + '\n')
+#             d2v50_test_output.write(str(d2v50_index_lookup[d2v_key_50]) + '\n')
+#             d2v100_test_output.write(str(d2v100_index_lookup[d2v_key_100]) + '\n')
+#             d2v150_test_output.write(str(d2v150_index_lookup[d2v_key_150]) + '\n')
+#             d2v200_test_output.write(str(d2v200_index_lookup[d2v_key_200]) + '\n')
     
+    
+        ''' dwell time prediction  '''
         y_test_output.write(str(dwell) + '\n')
+        y_true.append( dwell ) 
+        
+        
+        ''' viewability prediction '''  
+#         if dwell >= 10:
+#             y_test_output.write('1\n')
+#             y_true.append( 1 ) 
+#         else:
+#             y_test_output.write('0\n')
+#             y_true.append( 0 ) 
+        
     
         y_pred_globalMEAN.append( dwell_globaldepth_mean[depth] )
         y_pred_globalMEDIAN.append( dwell_globaldepth_median[depth] )
@@ -364,7 +582,8 @@ for test_pv in ttg.test_set:
         y_pred_userMEDIAN.append( dwell_userdepth_median[uid][depth] )
         y_pred_pageMEAN.append( dwell_pagedepth_mean[url][depth] )
         y_pred_pageMEDIAN.append( dwell_pagedepth_median[url][depth] )
-        y_true.append( dwell ) 
+
+        
 
 
 print("Finish outputting\n")
@@ -375,6 +594,14 @@ print('RMSD_userMEAN =', sqrt(mean_squared_error(y_true, y_pred_userMEAN)))
 print('RMSD_userMEDIAN =', sqrt(mean_squared_error(y_true, y_pred_userMEDIAN)))
 print('RMSD_pageMEAN =', sqrt(mean_squared_error(y_true, y_pred_pageMEAN)))
 print('RMSD_pageMEDIAN =', sqrt(mean_squared_error(y_true, y_pred_pageMEDIAN)))
+
+# print(y_pred_globalMEAN)
+# print(y_pred_userMEAN)
+# print(y_pred_pageMEAN)
+
+# print('LogLoss_gloablMEAN =', logloss(y_true, y_pred_globalMEAN))
+# print('LogLoss_userMEAN =', logloss(y_true, y_pred_userMEAN))
+# print('LogLoss_pageMEAN =', logloss(y_true, y_pred_pageMEAN))
 
 # print("SCREEN")
 # for s, c in screen_val_dist.items():
