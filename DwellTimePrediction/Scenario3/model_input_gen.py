@@ -49,7 +49,7 @@ def input_vector_builder(pageviews):
     y = [] # [ [2, 4], [3], ...]
     no_d2v_dep_num = 0
     for pv_index, pv in enumerate(pageviews):
-        print(pv_index+1, "/", len(pageviews))
+#         print(pv_index+1, "/", len(pageviews))
         pv_X = []
         pv_y = []
         for index, (dwell, uid, url, 

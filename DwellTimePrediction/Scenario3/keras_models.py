@@ -13,7 +13,7 @@ from keras.layers.normalization import BatchNormalization
 from keras.layers.advanced_activations import LeakyReLU
 from keras.engine.topology import Merge
 from keras.models import Model
-from keras.utils.visualize_util import plot
+# from keras.utils.visualize_util import plot
 
 
 '''
@@ -21,7 +21,7 @@ activation: softmax, softplus, softsign, relu, tanh, sigmoid, hard_sigmoid, line
 '''
 
 
-optimizer = SGD(lr=0.001, decay=1e-6, momentum=0.9, nesterov=True)
+optimizer = SGD(lr=0.001, decay=1e-6, momentum=0.8, nesterov=True)
 # optimizer = RMSprop(lr=0.0001, rho=0.9, epsilon=1e-08)
 # optimizer = Adam(lr=0.0001)
 
@@ -49,7 +49,7 @@ def RNN_context_embed(ctx_feat_num, user_num, page_num, timestep_num=100):
 #                             weights=None)(page_input)
     
     depth_input = Input(shape=(timestep_num,), name='dep_input')
-    depth_embed = Embedding(input_dim=101, output_dim=200, input_length=timestep_num,
+    depth_embed = Embedding(input_dim=101, output_dim=50, input_length=timestep_num,
                             weights=None)(depth_input)
     
     
@@ -76,7 +76,7 @@ def RNN_context_embed(ctx_feat_num, user_num, page_num, timestep_num=100):
                          optimizer=optimizer,
                          metrics=['mean_squared_error'])
     
-    plot(model, to_file='model.png')
+#     plot(model, to_file='model.png')
     
     return model
 
@@ -136,7 +136,7 @@ def RNN_context_embed(ctx_feat_num, user_num, page_num, timestep_num=100):
 def linearRegression_keras(feat_num, timestep_num=100):
     model = Sequential()
 
-    model.add(BatchNormalization(input_shape=(timestep_num, feat_num)))
+#     model.add(BatchNormalization(input_shape=(timestep_num, feat_num)))
     
     model.add(TimeDistributed(Dense(output_dim=1, activation='linear'), input_shape=(timestep_num, feat_num))) # sequence labeling
     

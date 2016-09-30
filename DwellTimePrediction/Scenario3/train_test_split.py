@@ -17,7 +17,7 @@ userlog = client['Forbes_Dec2015']['FreqUserLogPV']
 articleInfo = client['Forbes_Dec2015']['ArticleInfo']
 
 
-COLD_START_THRESHOLD = 5
+COLD_START_THRESHOLD = 6
 
 
 
@@ -209,7 +209,7 @@ while not done:
 #                     continue
                 
         
-                depth_dwell = viewport_behaviors(pv_doc['loglist']) # [[screen_top, screen_bottom, dwell_time], [ ... ]]
+                depth_dwell = viewport_behaviors(pv_doc['loglist']) 
 #                 print(depth_dwell)
                 if depth_dwell is None or all(v == 0 for v in depth_dwell):
                     continue                

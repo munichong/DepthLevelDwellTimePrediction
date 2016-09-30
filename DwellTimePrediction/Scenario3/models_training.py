@@ -62,7 +62,7 @@ def merge_Xs(*Xs):
 # def rnn_dict_input():
 
 # BATCH_SIZE = len(mig.X_train)
-BATCH_SIZE = 1280
+BATCH_SIZE = 512
 NUM_EPOCH = 20
 
 num_batch = math.ceil( len(mig.X_train) / BATCH_SIZE )
@@ -102,7 +102,6 @@ for epoch in range(1, NUM_EPOCH+1):
         ''' Baseline - Linear Regression '''
         loss_lr = lr.train_on_batch(merge_Xs(X_batch_ctx, X_batch_dep), y_batch)
     
-    
         ''' RNN '''
         loss_rnn = rnn.train_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx}, y_batch)
 #         print(loss.history)
@@ -116,7 +115,7 @@ for epoch in range(1, NUM_EPOCH+1):
     Use the RNN trained in the epoch to predict and compute the training error of this epoch 
     '''    
     rmsd_training = RMSD_batch()
-    _n = 0
+    
     for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=1280):  
         prediction_batch = rnn.predict_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx})
                 
@@ -207,6 +206,10 @@ print()
 #     print("The validation error of Linear Regression = %f" % val_error_all[1])
 #     print("The validation error of RNN = %f" % val_error_all[2])
 #     print()
+
+
+print("LR got the best performance at Epoch %d" % best_epoch_lr)
+print("RNN got the best performance at Epoch %d" % best_epoch_rnn)
 
     
 rnn_best = load_model('rnn.h5')
