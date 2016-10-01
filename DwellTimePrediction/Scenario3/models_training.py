@@ -116,7 +116,7 @@ for epoch in range(1, NUM_EPOCH+1):
     '''    
     rmsd_training = RMSD_batch()
     
-    for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=1280):  
+    for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=BATCH_SIZE):  
         prediction_batch = rnn.predict_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx})
                 
         if np.count_nonzero(prediction_batch) == 0:
@@ -141,8 +141,8 @@ for epoch in range(1, NUM_EPOCH+1):
     rmsd_globalAvg_val = RMSD_batch()
     rmsd_lr_val = RMSD_batch()
     rmsd_rnn_val = RMSD_batch()
-    for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_val, mig.y_val, batch_size=1280):
-        rmsd_globalAvg_val.update( y_batch, globalAverage.predict(1280) )
+    for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_val, mig.y_val, batch_size=BATCH_SIZE):
+        rmsd_globalAvg_val.update( y_batch, globalAverage.predict(BATCH_SIZE) )
         rmsd_lr_val.update(y_batch, lr.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
         rmsd_rnn_val.update( y_batch, rnn.predict_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx}) )
         
@@ -222,8 +222,8 @@ Predict and calculate the test error of this epoch
 rmsd_globalAvg_test = RMSD_batch()
 rmsd_lr_test = RMSD_batch()
 rmsd_rnn_test = RMSD_batch()
-for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_test, mig.y_test, batch_size=1280):
-    rmsd_globalAvg_test.update( y_batch, globalAverage.predict(1280) )
+for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_test, mig.y_test, batch_size=BATCH_SIZE):
+    rmsd_globalAvg_test.update( y_batch, globalAverage.predict(BATCH_SIZE) )
     rmsd_lr_test.update(y_batch, lr_best.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
     rmsd_rnn_test.update( y_batch, rnn_best.predict_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx}) )
 

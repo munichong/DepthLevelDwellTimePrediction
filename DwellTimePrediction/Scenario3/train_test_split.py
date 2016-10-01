@@ -347,16 +347,32 @@ validate_set = []
 test_set = []
 # all_training_text = defaultdict(str) # url -> body_text
 # all_test_text = defaultdict(str)
-# users_have_been_in_test = set()
-# pages_have_been_in_test = set()
+users_in_train = defaultdict(int)
+pages_in_train = defaultdict(int)
+users_in_val = defaultdict(int)
+pages_in_val = defaultdict(int)
 
 # np.random.shuffle(all_pageviews)
 for pv in all_pageviews:
-#     if ( user_freq2[uid] < fups.COLD_START_THRESHOLD or 
-#         page_freq2[url] < fups.COLD_START_THRESHOLD ):
-#         continue
-#     body_text = get_body_text(pv.url)
-
+    uid = pv.uid
+    url = pv.url
+    
+    if (users_in_train[uid] / user_freq2[uid] < 0.7 and
+        pages_in_train[url] / page_freq2[url] < 0.7):
+        training_set.append(pv)
+        users_in_train[uid] += 1
+        pages_in_train[url] += 1
+    else:
+        if (users_in_val[uid] / (user_freq2[uid] - users_in_train[uid]) < 0.4 and
+        pages_in_val[url] / (page_freq2[url] - pages_in_train[url]) < 0.4):
+            validate_set.append(pv)
+            users_in_val[uid] += 1
+            pages_in_val[url] += 1
+        else:
+            test_set.append(pv)
+        
+        
+    '''   
 #     if ( user_freq2[pv.uid] > COLD_START_THRESHOLD and 
 #          page_freq2[pv.url] > COLD_START_THRESHOLD and
     if ( user_freq2[pv.uid] > 1 and 
@@ -379,7 +395,7 @@ for pv in all_pageviews:
         training_set.append(pv)
 #         if body_text != 'unknown':
 #             all_training_text[pv.url] = body_text
-            
+    '''     
         
 print()
 print(len(training_set), "pageviews in the training set")
