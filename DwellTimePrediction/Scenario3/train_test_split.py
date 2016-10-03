@@ -4,6 +4,7 @@ Created on Apr 1, 2016
 @author: Wang
 '''
 import re, numpy as np
+from pprint import pprint
 from pymongo import MongoClient
 from pymongo.errors import CursorNotFound
 from dwell_time_calculation import viewport_behaviors, print_viewport_dwell_dist
@@ -54,14 +55,71 @@ def remove_version(raw_str):
     if sim_str.split()[-1].isdigit():
         return ' '.join(sim_str.split()[:-1])
     return sim_str
+
+def categorize_device(raw_device):
+#     if raw_device[:len('lg')] == 'lg' or raw_device == 'vk700':
+#         return 'lg'
+#     if raw_device[:len('sgp')] == 'sgp':
+#         return 'sgp'
+#     if raw_device[:len('rct')] == 'rct':
+#         return 'rct'
+#     if raw_device[:len('qmv')] == 'qmv':
+#         return 'qmv'
+    if raw_device[:len('ipad')] == 'ipad': # e.g., 'ipad', 'ipad4,1', 'ipad5,3'
+        return 'ipad'
+#     if raw_device[:len('hudl')] == 'hudl':
+#         return 'hudl'
+#     if raw_device[:len('lenovo')] == 'lenovo':
+#         return 'lenovo'
+    if raw_device[:len('blackberry')] == 'blackberry':
+        return 'blackberry'
+    if raw_device[:len('samsung sm')] == 'samsung sm':
+        return 'samsung sm'
+    if raw_device[:len('samsung gt')] == 'samsung gt':
+        return 'samsung OTHER'
+    if raw_device[:len('samsung sch')] == 'samsung sch':
+        return 'samsung OTHER'
+    if raw_device[:len('samsung sgh')] == 'samsung sch':
+        return 'samsung OTHER'
+    if raw_device[:len('playstation')] == 'playstation':
+        return 'playstation'
+    if raw_device[:len('kindle fire')] == 'kindle fire':
+        return 'kindle fire'
+    if raw_device[:len('asus')] == 'asus': # e.g., 'asus nexus 7', 'asus nexus 10', 'asus me173x'
+        return 'asus'
+    
+    
+    if raw_device in ['cw-vi8', 'kfsawi', 'd101', 'b1-750', 'pixel c', 'a1-840fhd', 'k010', 'pro7d', 'ns-15t8lte', 
+                      'vk810 4g', 'qtaqz3', 'motorola xoom', 'p01m', 'b1-750', 'le pan tc802a', 'asus me173x'] \
+                      or raw_device[:len('lenovo')] == 'lenovo' or raw_device[:len('hudl')] == 'hudl' \
+                      or  raw_device[:len('rct')] == 'rct' or raw_device[:len('qmv')] == 'qmv':
+        return 'generic tablet'
+    if raw_device[:len('venue')] == 'venue':
+        return 'generic tablet'
+    if ' tablet' in raw_device:
+        return 'generic tablet'
+    
+    if raw_device in ['microsoft lumia 735', 'k007'] or raw_device[:len('sgp')] == 'sgp' or raw_device[:len('lg')] == 'lg' or raw_device == 'vk700':
+        return 'generic smartphone'
+    return raw_device
+
+def categorize_browser(raw_browser):
+    if raw_browser == 'firefox ios' or raw_browser == 'firefox mobile':
+        return 'firefox ios/mobile'
+    return raw_browser
     
 def get_info_from_agent(ua_string):
     user_agent = parse(ua_string)
 #     print(str(user_agent).split(' / '))
 #     print([simplify_version(string) for string in str(user_agent).split(' / ')])
     device, os, browser = str(user_agent).lower().split(' / ')
+    ''' remove version '''
     os  = remove_version(os)
     browser = remove_version(browser)
+    ''' categorize device, os, and browser '''
+    device = categorize_device(device)
+    browser = categorize_browser(browser)
+    
     return device, os, browser
 #     return [simplify_version(string) for string in str(user_agent).split(' / ')]
 #     print(user_agent.device.family, user_agent.device.brand, user_agent.device.model)
@@ -84,10 +142,10 @@ def get_user_geo(country, state):
 def get_freshness(doc, pv_start_time):
     if 'date' in doc:
         pub_time = int(str(doc['date'])[:-3])
-        freshness_hour = int((pv_start_time - pub_time) / 86400) # unit: day
-        if freshness_hour > 10:
-            freshness_hour = '>10d'
-        return str(freshness_hour)
+        freshness = int((pv_start_time - pub_time) / 86400) # unit: day
+        if freshness > 10:
+            freshness = '>10d'
+        return str(freshness)
     else:
         return 'unknown'
 
@@ -108,28 +166,69 @@ def get_section_group(doc):
             section_group.add(chanSec_dict['sectionId'].lower())
     return list(section_group)
 
+def get_commentCount(count):
+    if count == 0:
+        return '0'
+    if count == 1:
+        return '1'
+    if count == 2:
+        return '2'
+    elif count > 2 and count <= 5:
+        return '3<=5'
+    elif count > 5 and count <= 10:
+        return '5<=10'
+    elif count > 10 and count <= 20:
+        return '10<=20'
+    else:
+        return '>20'
+
+def categorize_length(raw_length):
+    length = int(raw_length / 100)
+    if length < 20:
+        return str(length)
+    elif length >= 20 and length < 25:
+        return '20=<25'
+    elif length >= 25 and length < 30:
+        return '25=<30'
+    elif length >= 30 and length < 40:
+        return '30=<40'
+    else:
+        return '>40'
+    
+        
+
 def get_article_info(userlog_url, pv_start_time):
     for doc in articleInfo.find({'URL_IN_USERLOG':userlog_url}):
         
         if 'body' in doc:
             try:
-                body_text = BeautifulSoup(doc['body']).getText()
+                body_text = BeautifulSoup(doc['body'], "lxml").getText()
             except TypeError:
                 break
             
             body_text = re.sub(r'\[.*?\]', ' ', body_text)
 #             print(body_text)
-            body_length = str(int(len(body_text.split()) / 100))
+            body_length = categorize_length(len(body_text.split()))
         else:
-            body_text = 'unknown'
-            body_length = 'unknown'
+            break
+#             body_text = 'unknown'
+#             body_length = 'unknown'
         channel = doc['displayChannel'] if 'displayChannel' in doc else 'unknown'
         section = doc['displaySection'] if 'displaySection' in doc else 'unknown'
         channel_group = get_channel_group(doc) # list
         section_group = get_section_group(doc) # list
         freshness = get_freshness(doc, pv_start_time)
         
-        return body_length, channel.lower(), section.lower(), channel_group, section_group, freshness
+        page_type = doc['type'].lower() if 'type' in doc else 'unknown'
+        templateType = doc['templateType'].lower() if 'templateType' in doc else 'unknown'
+        blogType = doc['blogType'].lower() if 'blogType' in doc else 'unknown'
+        storyType = doc['storyType'].lower() if 'storyType' in doc else 'unknown'
+        image = 'true' if 'image' in doc else 'false'
+        writtenByForbesStaff = str(doc['writtenByForbesStaff']).lower() if 'writtenByForbesStaff' in doc else 'unknown'
+        calledOutCommentCount = get_commentCount(doc['calledOutCommentCount']) if 'calledOutCommentCount' in doc else 'unknown'
+        
+        return body_length, channel.lower(), section.lower(), channel_group, section_group, freshness, \
+            page_type, templateType, blogType, storyType, image, writtenByForbesStaff, calledOutCommentCount
 #     return ['unknown', 'unknown', 'unknown', ['unknown'], ['unknown'], 'unknown']
     return None
     
@@ -167,7 +266,9 @@ class Pageview:
                                           auxiliary['length'], auxiliary['channel'], auxiliary['section'],
                                           auxiliary['channel_group'], auxiliary['section_group'],
                                           auxiliary['fresh'], auxiliary['device'], auxiliary['os'],
-                                          auxiliary['browser']
+                                          auxiliary['browser'], auxiliary['page_type'], auxiliary['templateType'],
+                                          auxiliary['blogType'], auxiliary['storyType'], auxiliary['image'], 
+                                          auxiliary['writtenByForbesStaff'], auxiliary['calledOutCommentCount']
                                           ))
 
     
@@ -182,9 +283,14 @@ user_num = 0
 all_pageviews = []
 done = False
 depth_dwell_counter = Counter()
+geo_counter = Counter()
+channel_counter = Counter()
+section_counter = Counter()
+length_counter = Counter()
 device_counter = Counter()
 os_counter = Counter()
 browser_counter = Counter()
+commentCount_counter = Counter()
 while not done:
     try:
         freq_uids = get_freq_uids(COLD_START_THRESHOLD)
@@ -224,6 +330,7 @@ while not done:
                 viewport_size = pv_doc['loglist'][0]['additionalinfo']['viewportSize'] if 'viewportSize' in pv_doc['loglist'][0]['additionalinfo'] else 'unknown'
                 
                 user_geo = get_user_geo(pv_doc['country'], pv_doc['state'])
+                geo_counter.update([user_geo])
                 
                 isodate = pv_doc['local_start_time']
                 if isodate:
@@ -234,13 +341,26 @@ while not done:
                 article_info = get_article_info(url, pv_doc['unix_start_time'])
                 if not article_info:
                     continue
-                body_length, channel, section, channel_group, section_group, freshness = article_info
+                
+#                 print(article_info)
+                body_length, channel, section, channel_group, section_group, freshness, \
+                page_type, templateType, blogType, storyType, image, writtenByForbesStaff, calledOutCommentCount = article_info
+                                
+                channel_counter.update(channel_group)
+                section_counter.update(section_group)
+                length_counter.update([body_length])
+                
                 
                 
                 device, os, browser = get_info_from_agent(pv_doc['ua'])
+                
+                if browser == 'moatbot': # suspect robot
+                    continue
+                
                 device_counter.update([device])
                 os_counter.update([os])
                 browser_counter.update([browser])
+                commentCount_counter.update([calledOutCommentCount])
             
                 
                 ''' this is a valid page view '''
@@ -253,7 +373,10 @@ while not done:
                                     weekday=local_weekday, hour=local_hour, 
                                     length=body_length, channel=channel, section=section,
                                     channel_group=channel_group, section_group=section_group, 
-                                    fresh=freshness, device=device, os=os, browser=browser
+                                    fresh=freshness, device=device, os=os, browser=browser,
+                                    page_type=page_type, templateType=templateType, blogType=blogType,
+                                    storyType=storyType, image=image, writtenByForbesStaff=writtenByForbesStaff,
+                                    calledOutCommentCount=calledOutCommentCount
                                     )
                 all_pageviews.append(pageview)
         done = True
@@ -277,6 +400,42 @@ for depth_dwell, count in sorted(depth_dwell_counter.items(), key=lambda x: x[0]
 print("******************************")
 del depth_dwell_counter
 
+
+print("\n*************** The Distribution of User Geo ***************")
+total = sum(geo_counter.values())
+geo_convert2OTHER = set()
+for geo, count in sorted(geo_counter.items(), key=lambda x: x[1], reverse=True):
+    if count/total < 0.001:
+        geo_convert2OTHER.add(geo)
+        print(geo, "\t", count, "\t", count/total, '\t', "CONVERT TO 'other'")
+    else:
+        print(geo, "\t", count, "\t", count/total)
+print("******************************")
+del geo_counter
+
+print("\n*************** The Distribution of Channel_Group ***************")
+total = sum(channel_counter.values())
+for channel, count in sorted(channel_counter.items(), key=lambda x: x[1], reverse=True):
+    print(channel, "\t", count, "\t", count/total)
+print("******************************")
+del channel_counter
+
+print("\n*************** The Distribution of Section_Group ***************")
+total = sum(section_counter.values())
+for section, count in sorted(section_counter.items(), key=lambda x: x[1], reverse=True):
+    print(section, "\t", count, "\t", count/total)
+print("******************************")
+del section_counter
+
+
+print("\n*************** The Distribution of Body Length ***************")
+total = sum(length_counter.values())
+for length, count in sorted(length_counter.items(), key=lambda x: x[0]):
+    print(length, "\t", count, "\t", count/total)
+print("******************************")
+del length_counter
+
+
 print("\n*************** The Distribution of Devices ***************")
 total = sum(device_counter.values())
 for device, count in sorted(device_counter.items(), key=lambda x: x[1], reverse=True):
@@ -286,19 +445,38 @@ del device_counter
 
 print("\n*************** The Distribution of OS ***************")
 total = sum(os_counter.values())
+os_convert2OTHER = set()
 for os, count in sorted(os_counter.items(), key=lambda x: x[1], reverse=True):
-    print(os, "\t", count, "\t", count/total)
+    if count < os_counter['other']:
+        os_convert2OTHER.add(os)
+        print(os, "\t", count, "\t", count/total, '\t', "CONVERT TO 'other'")
+    else:
+        print(os, "\t", count, "\t", count/total)
 print("******************************")
 del os_counter
 
-print("\n*************** The Distribution of Devices ***************")
+print("\n*************** The Distribution of Browsers ***************")
 total = sum(browser_counter.values())
+browser_convert2OTHER = set()
 for browser, count in sorted(browser_counter.items(), key=lambda x: x[1], reverse=True):
-    print(browser, "\t", count, "\t", count/total)
+    if count < browser_counter['other']:
+        browser_convert2OTHER.add(browser)
+        print(browser, "\t", count, "\t", count/total, '\t', "CONVERT TO 'other'")
+    else:
+        print(browser, "\t", count, "\t", count/total)
 print("******************************")
 del browser_counter
 
+print("\n*************** The Distribution of calledOutCommentCount ***************")
+total = sum(commentCount_counter.values())
+for commentCount, count in sorted(commentCount_counter.items(), key=lambda x: x[1], reverse=True):
+    print(commentCount, "\t", count, "\t", count/total)
+print("******************************")
+del commentCount_counter
+
+
 print_viewport_dwell_dist()
+
 
 
 
@@ -324,12 +502,12 @@ def filter_pageviews_by_minPVnum(pvs):
 
 all_pageviews = filter_pageviews_by_minPVnum(all_pageviews)
 
-# print()
-# print("=============== Statistics of Further Data ================")
-# print("valid_pv_num2 =", valid_pv_num2)
-# print(len(user_freq2), "unique users and", len(page_freq2), "unique pages")
-# print("density =", valid_pv_num2/float(len(user_freq2) * len(page_freq2)))
-# print()
+print()
+print("=============== Statistics of Further Data ================")
+print("valid_pv_num2 =", valid_pv_num2)
+print(len(user_freq2), "unique users and", len(page_freq2), "unique pages")
+print("density =", valid_pv_num2/float(len(user_freq2) * len(page_freq2)))
+print()
 
 # print("(count, freqOfCount)")
 # print( Counter(user_freq2.values()).most_common() )
@@ -357,7 +535,11 @@ for pv in all_pageviews:
     uid = pv.uid
     url = pv.url
     
-    if (users_in_train[uid] / user_freq2[uid] < 0.7 and
+    if uid not in users_in_train or url not in pages_in_train:
+        training_set.append(pv)
+        users_in_train[uid] += 1
+        pages_in_train[url] += 1
+    elif (users_in_train[uid] / user_freq2[uid] < 0.7 and
         pages_in_train[url] / page_freq2[url] < 0.7):
         training_set.append(pv)
         users_in_train[uid] += 1
@@ -370,32 +552,56 @@ for pv in all_pageviews:
             pages_in_val[url] += 1
         else:
             test_set.append(pv)
-        
-        
-    '''   
-#     if ( user_freq2[pv.uid] > COLD_START_THRESHOLD and 
-#          page_freq2[pv.url] > COLD_START_THRESHOLD and
-    if ( user_freq2[pv.uid] > 1 and 
-         page_freq2[pv.url] > 1 and
-         len(test_set) / len(all_pageviews) <= 0.1):
-        test_set.append(pv)
-#         if body_text != 'unknown':
-#             all_test_text[pv.url] = body_text
-        user_freq2[pv.uid] -= 1
-        page_freq2[pv.url] -= 1
-    elif (user_freq2[pv.uid] > 1 and 
-         page_freq2[pv.url] > 1 and
-         len(validate_set) / len(all_pageviews) <= 0.1):
-        validate_set.append(pv)
-#         if body_text != 'unknown':
-#             all_test_text[pv.url] = body_text
-        user_freq2[pv.uid] -= 1
-        page_freq2[pv.url] -= 1
-    else:
-        training_set.append(pv)
-#         if body_text != 'unknown':
-#             all_training_text[pv.url] = body_text
-    '''     
+
+print()
+if not (users_in_val.keys() - users_in_train.keys()):
+    print('The users in validation data are also in the training data')
+else:
+    print('!!! Some users in validation data are NOT in the training data !!!')
+if not (pages_in_val.keys() - pages_in_train.keys()):
+    print('The pages in validation data are also in the training data')
+else:
+    print('!!! Some pages in validation data are NOT in the training data !!!')
+print()      
+
+
+
+print("Users in the training data")
+print("(num_of occurrence, num_of_users)")
+pprint(sorted(Counter(users_in_train.values()).most_common(), key=lambda x:x[0], reverse=False))
+print("Pages in the training data")
+print("(num_of occurrence, num_of_pages)")
+pprint(sorted(Counter(pages_in_train.values()).most_common(), key=lambda x:x[0], reverse=False))
+
+
+val_userFreq_in_train = Counter()
+val_pageFreq_in_train = Counter()
+checked_users = set()
+checked_pages = set()
+for pv in validate_set:
+    uid = pv.uid
+    url = pv.url
+    if uid not in checked_users:
+        val_userFreq_in_train.update([users_in_train[uid]])
+        checked_users.add(uid)
+    if url not in checked_pages:
+        val_pageFreq_in_train.update([pages_in_train[url]])
+        checked_pages.add(url)
+
+print()
+for num_in_train, user_count in sorted(val_userFreq_in_train.items(), key=lambda x: x[0]):
+    print(num_in_train, "\t", user_count)
+print()
+for num_in_train, page_count in sorted(val_pageFreq_in_train.items(), key=lambda x: x[0]):
+    print(num_in_train, "\t", page_count)
+print()
+
+del val_userFreq_in_train
+del val_pageFreq_in_train
+del checked_users
+del checked_pages
+
+
         
 print()
 print(len(training_set), "pageviews in the training set")
@@ -416,6 +622,10 @@ del user_freq
 del page_freq
 del user_freq2
 del page_freq2
+del users_in_train
+del pages_in_train
+del users_in_val
+del pages_in_val
 
 del all_pageviews
 

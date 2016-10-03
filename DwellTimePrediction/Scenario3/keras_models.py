@@ -21,7 +21,7 @@ activation: softmax, softplus, softsign, relu, tanh, sigmoid, hard_sigmoid, line
 '''
 
 
-optimizer = SGD(lr=0.001, decay=1e-6, momentum=0.8, nesterov=True)
+optimizer = SGD(lr=0.0001, decay=1e-6, momentum=0.99, nesterov=True)
 # optimizer = RMSprop(lr=0.0001, rho=0.9, epsilon=1e-08)
 # optimizer = Adam(lr=0.0001)
 
@@ -69,6 +69,8 @@ def RNN_context_embed(ctx_feat_num, user_num, page_num, timestep_num=100):
                           return_sequences=True)(merged_model)
     
     merged_model = TimeDistributed(Dense(output_dim=1, activation='linear'))(merged_model)
+    
+    merged_model = TimeDistributed(Dense(output_dim=1, activation='relu'))(merged_model)
     
     model = Model(input=[depth_input, context_input], output=[merged_model])
     

@@ -41,16 +41,6 @@ class RMSD_batch:
             
             self.total_denominator += len(y_true)
 
-#             if self.total_numerator > 1000000000:
-#                 output_true = open('y_batch_true.csv', 'w')
-#                 for y_t in [y[0] for y in y_true]:
-#                     output_true.write(str(y_t))
-#                     output_true.write('\n')
-#                     
-#                 output_pred = open('y_batch_pred.csv', 'w')
-#                 for y_t in [y[0] for y in y_pred]:
-#                     output_pred.write(str(y_t))
-#                     output_pred.write('\n')
                 
     def final_RMSD(self):
         return math.sqrt(self.total_numerator / self.total_denominator)
@@ -59,11 +49,10 @@ class RMSD_batch:
 def merge_Xs(*Xs):
     return np.dstack(Xs)
 
-# def rnn_dict_input():
 
 # BATCH_SIZE = len(mig.X_train)
 BATCH_SIZE = 512
-NUM_EPOCH = 20
+NUM_EPOCH = 30
 
 num_batch = math.ceil( len(mig.X_train) / BATCH_SIZE )
 best_epoch_lr = 0
@@ -213,7 +202,7 @@ print("RNN got the best performance at Epoch %d" % best_epoch_rnn)
 
     
 rnn_best = load_model('rnn.h5')
-lr_best = load_model('lr.h5')   
+# lr_best = load_model('lr.h5')   
 
 '''
 Load the RNN and LR have the lowest validation error
@@ -224,13 +213,13 @@ rmsd_lr_test = RMSD_batch()
 rmsd_rnn_test = RMSD_batch()
 for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_test, mig.y_test, batch_size=BATCH_SIZE):
     rmsd_globalAvg_test.update( y_batch, globalAverage.predict(BATCH_SIZE) )
-    rmsd_lr_test.update(y_batch, lr_best.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
+#     rmsd_lr_test.update(y_batch, lr_best.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
     rmsd_rnn_test.update( y_batch, rnn_best.predict_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx}) )
 
 print()
 print("================= Performance on the Test Set =======================")
 print("GlobalAverage: RMSD = %f" % (rmsd_globalAvg_test.final_RMSD()))
-print("Linear Regression (Epoch=%d): RMSD = %f" % (best_epoch_lr, rmsd_lr_test.final_RMSD()))
+# print("Linear Regression (Epoch=%d): RMSD = %f" % (best_epoch_lr, rmsd_lr_test.final_RMSD()))
 print("RNN (Epoch=%d): RMSD = %f" % (best_epoch_rnn, rmsd_rnn_test.final_RMSD()))
 print("=====================================================================")
 
