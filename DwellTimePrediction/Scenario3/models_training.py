@@ -52,7 +52,7 @@ def merge_Xs(*Xs):
 
 # BATCH_SIZE = len(mig.X_train)
 BATCH_SIZE = 512
-NUM_EPOCH = 30
+NUM_EPOCH = 40
 
 num_batch = math.ceil( len(mig.X_train) / BATCH_SIZE )
 best_epoch_lr = 0
@@ -77,7 +77,7 @@ print("\n****** Iterating over each batch of the training data ******")
 for epoch in range(1, NUM_EPOCH+1):
     batch_index = 0
     
-    for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=BATCH_SIZE):
+    for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=BATCH_SIZE):
         batch_index += 1
         
     #     sgdRegressor.partial_fit(X_batch, y_batch)
@@ -92,7 +92,11 @@ for epoch in range(1, NUM_EPOCH+1):
         loss_lr = lr.train_on_batch(merge_Xs(X_batch_ctx, X_batch_dep), y_batch)
     
         ''' RNN '''
-        loss_rnn = rnn.train_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx}, y_batch)
+        loss_rnn = rnn.train_on_batch({'dep_input':X_batch_dep,
+                                       'ctx_input':X_batch_ctx,
+                                       'user_input': X_batch_u,
+                                       'page_input': X_batch_p,
+                                       },y_batch)
 #         print(loss.history)
 #         print(rnn.metrics_names)
         print("Epoch %d/%d : Batch %d/%d | %s = %f | root_%s = %f" %
@@ -105,8 +109,11 @@ for epoch in range(1, NUM_EPOCH+1):
     '''    
     rmsd_training = RMSD_batch()
     
-    for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=BATCH_SIZE):  
-        prediction_batch = rnn.predict_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx})
+    for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=BATCH_SIZE):  
+        prediction_batch = rnn.predict_on_batch({'dep_input':X_batch_dep,
+                                                 'ctx_input':X_batch_ctx,
+                                                 'user_input': X_batch_u,
+                                                 'page_input': X_batch_p})
                 
         if np.count_nonzero(prediction_batch) == 0:
             print("All zero")
@@ -130,10 +137,13 @@ for epoch in range(1, NUM_EPOCH+1):
     rmsd_globalAvg_val = RMSD_batch()
     rmsd_lr_val = RMSD_batch()
     rmsd_rnn_val = RMSD_batch()
-    for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_val, mig.y_val, batch_size=BATCH_SIZE):
+    for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_val, mig.y_val, batch_size=BATCH_SIZE):
         rmsd_globalAvg_val.update( y_batch, globalAverage.predict(BATCH_SIZE) )
         rmsd_lr_val.update(y_batch, lr.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
-        rmsd_rnn_val.update( y_batch, rnn.predict_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx}) )
+        rmsd_rnn_val.update( y_batch, rnn.predict_on_batch({'dep_input':X_batch_dep,
+                                                            'ctx_input':X_batch_ctx,
+                                                            'user_input': X_batch_u,
+                                                            'page_input': X_batch_p}) )
         
     val_error_history.append((rmsd_globalAvg_val.final_RMSD(), 
                                rmsd_lr_val.final_RMSD(), 
@@ -179,12 +189,13 @@ for epoch in range(1, NUM_EPOCH+1):
     print()
     
     
-
+'''
 # Just print out
 print("GlobalAverage:")
 print(globalAverage.predict(1)[0])
 print()
-
+'''
+    
 # epoch = 0
 # for train_error_rnn, val_error_all in zip(train_error_history, val_error_history):
 #     epoch += 1
@@ -211,10 +222,13 @@ Predict and calculate the test error of this epoch
 rmsd_globalAvg_test = RMSD_batch()
 rmsd_lr_test = RMSD_batch()
 rmsd_rnn_test = RMSD_batch()
-for X_batch_ctx, X_batch_dep, y_batch in mig.Xy_gen(mig.X_test, mig.y_test, batch_size=BATCH_SIZE):
+for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_test, mig.y_test, batch_size=BATCH_SIZE):
     rmsd_globalAvg_test.update( y_batch, globalAverage.predict(BATCH_SIZE) )
 #     rmsd_lr_test.update(y_batch, lr_best.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
-    rmsd_rnn_test.update( y_batch, rnn_best.predict_on_batch({'dep_input':X_batch_dep, 'ctx_input':X_batch_ctx}) )
+    rmsd_rnn_test.update( y_batch, rnn_best.predict_on_batch({'dep_input': X_batch_dep, 
+                                                              'ctx_input': X_batch_ctx,
+                                                              'user_input': X_batch_u,
+                                                              'page_input': X_batch_p}) )
 
 print()
 print("================= Performance on the Test Set =======================")

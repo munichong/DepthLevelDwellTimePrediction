@@ -11,6 +11,7 @@ from dwell_time_calculation import viewport_behaviors, print_viewport_dwell_dist
 from collections import defaultdict, Counter
 from bs4 import BeautifulSoup
 from user_agents import parse
+from urllib.parse import urlparse
 
 
 client = MongoClient()
@@ -79,7 +80,9 @@ def categorize_device(raw_device):
         return 'samsung OTHER'
     if raw_device[:len('samsung sch')] == 'samsung sch':
         return 'samsung OTHER'
-    if raw_device[:len('samsung sgh')] == 'samsung sch':
+    if raw_device[:len('samsung sgh')] == 'samsung sgh':
+        return 'samsung OTHER'
+    if raw_device[:len('samsung sph')] == 'samsung sph':
         return 'samsung OTHER'
     if raw_device[:len('playstation')] == 'playstation':
         return 'playstation'
@@ -89,8 +92,10 @@ def categorize_device(raw_device):
         return 'asus'
     
     
-    if raw_device in ['cw-vi8', 'kfsawi', 'd101', 'b1-750', 'pixel c', 'a1-840fhd', 'k010', 'pro7d', 'ns-15t8lte', 
-                      'vk810 4g', 'qtaqz3', 'motorola xoom', 'p01m', 'b1-750', 'le pan tc802a', 'asus me173x'] \
+    if raw_device in ['cw-vi8', 'kfsawi', 'd101', 'b1-750', 'pixel c', 'a1-840fhd', 'k010', 'pro7d', 'ns-15t8lte', 'a1',
+                      'vk410', 'vk810 4g', 'qtaqz3', 'motorola xoom', 'p01m', 'b1-750', 'le pan tc802a', 'asus me173x',
+                      'xiaomi mi pad', 'dpm7827', 'trio axs 4g', 'b1-720', 'at7-c', 'a3-a20', 'hp slate 7 voice tab',
+                      'ns-p16at10', 'a200', 'telpad qs', 'hp 10'] \
                       or raw_device[:len('lenovo')] == 'lenovo' or raw_device[:len('hudl')] == 'hudl' \
                       or  raw_device[:len('rct')] == 'rct' or raw_device[:len('qmv')] == 'qmv':
         return 'generic tablet'
@@ -99,7 +104,7 @@ def categorize_device(raw_device):
     if ' tablet' in raw_device:
         return 'generic tablet'
     
-    if raw_device in ['microsoft lumia 735', 'k007'] or raw_device[:len('sgp')] == 'sgp' or raw_device[:len('lg')] == 'lg' or raw_device == 'vk700':
+    if raw_device in ['microsoft lumia 735', 'k007', 'htc 0p6b180'] or raw_device[:len('sgp')] == 'sgp' or raw_device[:len('lg')] == 'lg' or raw_device == 'vk700':
         return 'generic smartphone'
     return raw_device
 
@@ -245,6 +250,14 @@ def get_body_text(userlog_url):
         return body_text.lower()
     return 'unknown'
 
+def remove_url_parameters(raw_url):
+    ''' remove parameters in the raw_url 
+        but keep page numbers '''
+    parse_result = urlparse(raw_url)
+    clean_url = '{0}://{1}{2}'.format(parse_result.scheme, parse_result.netloc, parse_result.path)
+#     print("clean_url:", clean_url)
+    return clean_url
+
 
 class Pageview:
     def __init__(self, uid, url, depth_dwell, **auxiliary):
@@ -297,9 +310,11 @@ while not done:
         freq_uids.skip(user_num)
         for user_doc in freq_uids: # for each unique user
             uid = user_doc['uid']
-            
+                        
+            if user_num % 2000 == 0:
+                print(user_num)
             user_num += 1
-            print(user_num)
+            
             
             """ for each page view """
             for pv_doc in userlog.find({'uid':uid}):
@@ -366,9 +381,10 @@ while not done:
                 ''' this is a valid page view '''
                 valid_pv_num += 1
                 user_freq[uid] += 1
-                page_freq[url] += 1
+                clean_url = remove_url_parameters(url)
+                page_freq[clean_url] += 1
                 
-                pageview = Pageview(uid, url, depth_dwell, screen=screen_size, 
+                pageview = Pageview(uid, clean_url, depth_dwell, screen=screen_size, 
                                     viewport=viewport_size, geo=user_geo, agent=pv_doc['ua'], 
                                     weekday=local_weekday, hour=local_hour, 
                                     length=body_length, channel=channel, section=section,
@@ -384,12 +400,7 @@ while not done:
         print("pymongo.errors.CursorNotFound")
         print("Will start from", user_num)
         
-print()
-print("=============== Statistics of Initial Data ================")
-print("valid_pv_num =", valid_pv_num)
-print(len(user_freq), " unique users and ", len(page_freq), " unique pages")
-print("density =", valid_pv_num/float(len(user_freq) * len(page_freq)))
-print()
+
 
 
 
@@ -413,6 +424,7 @@ for geo, count in sorted(geo_counter.items(), key=lambda x: x[1], reverse=True):
 print("******************************")
 del geo_counter
 
+'''
 print("\n*************** The Distribution of Channel_Group ***************")
 total = sum(channel_counter.values())
 for channel, count in sorted(channel_counter.items(), key=lambda x: x[1], reverse=True):
@@ -426,7 +438,7 @@ for section, count in sorted(section_counter.items(), key=lambda x: x[1], revers
     print(section, "\t", count, "\t", count/total)
 print("******************************")
 del section_counter
-
+'''
 
 print("\n*************** The Distribution of Body Length ***************")
 total = sum(length_counter.values())
@@ -474,17 +486,25 @@ for commentCount, count in sorted(commentCount_counter.items(), key=lambda x: x[
 print("******************************")
 del commentCount_counter
 
-
+'''
 print_viewport_dwell_dist()
+'''
 
 
+
+print()
+print("=============== Statistics of Initial Data ================")
+print("valid_pv_num =", valid_pv_num)
+print(len(user_freq), " unique users and ", len(page_freq), " unique pages")
+print("density =", valid_pv_num/float(len(user_freq) * len(page_freq)))
+print()
 
 
 user_freq2 = defaultdict(int)
 page_freq2 = defaultdict(int)
 valid_pv_num2 = 0
 def filter_pageviews_by_minPVnum(pvs):
-    FURTHER_COLD_START_THRESHOLD = 0 # fups.COLD_START_THRESHOLD
+    FURTHER_COLD_START_THRESHOLD = 1 # fups.COLD_START_THRESHOLD
     filtered_dataset = []
     global valid_pv_num2, user_freq2, page_freq2
     for pv in pvs:
@@ -509,13 +529,6 @@ print(len(user_freq2), "unique users and", len(page_freq2), "unique pages")
 print("density =", valid_pv_num2/float(len(user_freq2) * len(page_freq2)))
 print()
 
-# print("(count, freqOfCount)")
-# print( Counter(user_freq2.values()).most_common() )
-# print( Counter(page_freq2.values()).most_common() )
-# 
-# print(sorted(Counter(user_freq2.values()).most_common(), key=lambda x:x[0], reverse=False))
-# print(sorted(Counter(page_freq2.values()).most_common(), key=lambda x:x[0], reverse=False))
-
 
 
 print("\n=============== Separating Training and Test Data ================")
@@ -536,20 +549,32 @@ for pv in all_pageviews:
     url = pv.url
     
     if uid not in users_in_train or url not in pages_in_train:
+        ''' if this is the first time that we see this user or this page '''
         training_set.append(pv)
+#         if uid == '49bdb98c-d8c4-1bce-bb92-a2e0f9f3a3d5':
+#             print('1', users_in_train[uid] / user_freq2[uid], pages_in_train[url] / page_freq2[url])
+        ''' mark that the user and the page has been added to training data once '''
         users_in_train[uid] += 1
         pages_in_train[url] += 1
-    elif (users_in_train[uid] / user_freq2[uid] < 0.7 and
+        
+    elif (users_in_train[uid] / user_freq2[uid] < 0.7 or
         pages_in_train[url] / page_freq2[url] < 0.7):
+        ''' if we have seen this user and page, but not enough history in the training data '''
         training_set.append(pv)
+#         if uid == '49bdb98c-d8c4-1bce-bb92-a2e0f9f3a3d5':
+#             print('2', users_in_train[uid] / user_freq2[uid], pages_in_train[url] / page_freq2[url])
+        ''' mark that the user and the page has been added to training data once '''
         users_in_train[uid] += 1
         pages_in_train[url] += 1
+        
     else:
-        if (users_in_val[uid] / (user_freq2[uid] - users_in_train[uid]) < 0.4 and
-        pages_in_val[url] / (page_freq2[url] - pages_in_train[url]) < 0.4):
+        if (users_in_val[uid] / (user_freq2[uid] - users_in_train[uid]) < 0.7 and
+        pages_in_val[url] / (page_freq2[url] - pages_in_train[url]) < 0.7):
             validate_set.append(pv)
             users_in_val[uid] += 1
             pages_in_val[url] += 1
+#             if uid == '49bdb98c-d8c4-1bce-bb92-a2e0f9f3a3d5':
+#                 print('3')
         else:
             test_set.append(pv)
 
@@ -566,12 +591,12 @@ print()
 
 
 
-print("Users in the training data")
-print("(num_of occurrence, num_of_users)")
-pprint(sorted(Counter(users_in_train.values()).most_common(), key=lambda x:x[0], reverse=False))
-print("Pages in the training data")
-print("(num_of occurrence, num_of_pages)")
-pprint(sorted(Counter(pages_in_train.values()).most_common(), key=lambda x:x[0], reverse=False))
+# print("Users in the training data")
+# print("(num_of occurrence, num_of_users)")
+# pprint(sorted(Counter(users_in_train.values()).most_common(), key=lambda x:x[0], reverse=False))
+# print("Pages in the training data")
+# print("(num_of occurrence, num_of_pages)")
+# pprint(sorted(Counter(pages_in_train.values()).most_common(), key=lambda x:x[0], reverse=False))
 
 
 val_userFreq_in_train = Counter()
@@ -589,12 +614,21 @@ for pv in validate_set:
         checked_pages.add(url)
 
 print()
+print("The frequency of validation users in the training data:")
 for num_in_train, user_count in sorted(val_userFreq_in_train.items(), key=lambda x: x[0]):
-    print(num_in_train, "\t", user_count)
+    print("%d users in validation set have %d record in training data" % (user_count, num_in_train))
 print()
+print("The frequency of validation pages in the training data:")
 for num_in_train, page_count in sorted(val_pageFreq_in_train.items(), key=lambda x: x[0]):
-    print(num_in_train, "\t", page_count)
+    print("%d pages in validation set have %d record in training data" % (page_count, num_in_train))
 print()
+
+
+# for u, c in users_in_train.items():
+#     if c > 60:
+# #     if users_in_train[u] == 1:
+#         print(u, ':',  c, 'in train,', users_in_val[u], 'in val')
+
 
 del val_userFreq_in_train
 del val_pageFreq_in_train

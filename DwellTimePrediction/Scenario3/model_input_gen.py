@@ -9,7 +9,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_extraction import DictVectorizer
 import train_test_split as tts
 from gensim.models import Doc2Vec
-from urllib.parse import urlparse
+
 
 def categorize_vp_wid(raw_vp_wid):
     if raw_vp_wid <= 5:
@@ -37,13 +37,7 @@ def add_vector_features(feat_dict, name_head, vector):
     for i in range(len(vector)):
         feat_dict[ ''.join([name_head, str(i)]) ] = vector[i]
 
-def remove_url_parameters(raw_url):
-    ''' remove parameters in the raw_url 
-        but keep page numbers '''
-    parse_result = urlparse(raw_url)
-    clean_url = '{0}://{1}{2}'.format(parse_result.scheme, parse_result.netloc, parse_result.path)
-#     print("clean_url:", clean_url)
-    return clean_url
+
 
 
 
@@ -62,8 +56,8 @@ class X_instance():
 
 
 unique_feature_names = set()
-unique_users = set() # include both training and test users
-unique_pages = set() # include both training and test pages
+user2index = {} # include both training and test users
+page2index = {} # include both training and test pages
 
 
 
@@ -79,7 +73,7 @@ def input_vector_builder(pageviews):
 #         print(pv_index+1, "/", len(pageviews))
         pv_X = []
         pv_y = []
-        for index, (dwell, uid, url, 
+        for index, (dwell, uid, clean_url, 
 #              top, bottom,
               screen, viewport, geo, agent,
                 weekday, hour, length, channel, section, channel_group, section_group, 
@@ -89,10 +83,16 @@ def input_vector_builder(pageviews):
             
             feature_dict = defaultdict(int)
             
-            clean_url = remove_url_parameters(url)
+            '''
+            Depth, User, Page indices all start from 1, not 0 !!!
+            '''
+            #             feature_dict['depth'] = index + 1
+            depth = index + 1 # range: [1, 100], must be an integer
             
-            unique_users.add(uid)
-            unique_pages.add(clean_url)
+            if uid not in user2index:
+                user2index[uid] = len(user2index) + 1
+            if clean_url not in page2index:
+                page2index[clean_url] = len(page2index) + 1
             
             
             '''
@@ -108,8 +108,7 @@ def input_vector_builder(pageviews):
 #                 continue
             
             
-#             feature_dict['depth'] = index + 1
-            depth = index + 1 # range: [1, 100], must be an integer
+
             
             
             vp_wid, vp_hei = discretize_pixel_area(viewport)
@@ -209,11 +208,10 @@ for vp_hei, count in sorted(vp_hei_counter.items(), key=lambda x: x[0]):
 print("******************************")
 
 
-unique_users_num = len(unique_users)
-unique_pages_num = len(unique_pages)
+unique_users_num = len(user2index)
+unique_pages_num = len(page2index)
 print("All three partitions contains %d unique users and %d unique pages" % (unique_users_num, unique_pages_num))
-del unique_users
-del unique_pages
+
 
 
 del tts.geo_convert2OTHER
@@ -236,6 +234,8 @@ print("The length of each vector will be", len(vectorizer.feature_names_))
 
 
 def Xy_gen(X, y, batch_size=10):
+    X_batch_u = []
+    X_batch_p = []
     X_batch_ctx = []
     X_batch_dep = []
     y_batch = []
@@ -246,6 +246,10 @@ def Xy_gen(X, y, batch_size=10):
                                                     (x.context for x in Xinst_pv)
                                                       ).toarray()
                             )
+        user_index = user2index[Xinst_pv[0].user]
+        page_index = page2index[Xinst_pv[0].page]
+        X_batch_u.append(np.array([user_index] * 100))
+        X_batch_p.append(np.array([page_index] * 100))
         X_batch_dep.append( [x.depth for x in Xinst_pv] )
         y_batch.append( y_pv )
         if len(y_batch) == batch_size:
@@ -254,14 +258,24 @@ def Xy_gen(X, y, batch_size=10):
 #             print(np.array(y_batch).shape)
             yield np.array(X_batch_ctx, dtype='float32'), \
                   np.array(X_batch_dep, dtype='float32'), \
+                  np.array(X_batch_u, dtype='float32'), \
+                  np.array(X_batch_p, dtype='float32'), \
                   np.array(y_batch, dtype='float32')
             X_batch_ctx.clear()
             X_batch_dep.clear()
+            X_batch_u.clear()
+            X_batch_p.clear()
             y_batch.clear()
             
     if len(y_batch) != 0:
         yield np.array(X_batch_ctx, dtype='float32'), \
               np.array(X_batch_dep, dtype='float32'), \
+              np.array(X_batch_u, dtype='float32'), \
+              np.array(X_batch_p, dtype='float32'), \
               np.array(y_batch, dtype='float32')
-        
+        X_batch_ctx.clear()
+        X_batch_dep.clear()
+        X_batch_u.clear()
+        X_batch_p.clear()
+        y_batch.clear()
  

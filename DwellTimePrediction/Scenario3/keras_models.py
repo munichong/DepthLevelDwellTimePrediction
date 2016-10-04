@@ -40,24 +40,24 @@ def RNN_simple(feat_num, timestep_num=100):
 
 def RNN_context_embed(ctx_feat_num, user_num, page_num, timestep_num=100):
 
-#     user_input = Input(shape=(timestep_num,), name='user_input')
-#     user_embed = Embedding(input_dim=user_num+1, output_dim=50, input_length=timestep_num,
-#                             weights=None)(user_input)
+    user_input = Input(shape=(timestep_num,), name='user_input')
+    user_embed = Embedding(input_dim=user_num+1, output_dim=20, input_length=timestep_num,
+                            weights=None)(user_input)
     
-#     page_input = Input(shape=(timestep_num,), name='page_input')
-#     page_embed = Embedding(input_dim=page_num+1, output_dim=50, input_length=timestep_num,
-#                             weights=None)(page_input)
+    page_input = Input(shape=(timestep_num,), name='page_input')
+    page_embed = Embedding(input_dim=page_num+1, output_dim=20, input_length=timestep_num,
+                            weights=None)(page_input)
     
     depth_input = Input(shape=(timestep_num,), name='dep_input')
-    depth_embed = Embedding(input_dim=101, output_dim=50, input_length=timestep_num,
+    depth_embed = Embedding(input_dim=101, output_dim=200, input_length=timestep_num,
                             weights=None)(depth_input)
     
     
     context_input = Input(shape=(timestep_num, ctx_feat_num), name='ctx_input')
     
     
-    merged_model = merge([depth_embed, context_input], mode='concat')
-#     merged_model = merge([user_embed, page_embed, depth_embed, context_input], mode='concat')
+#     merged_model = merge([depth_embed, context_input], mode='concat')
+    merged_model = merge([user_embed, page_embed, depth_embed, context_input], mode='concat')
     
     merged_model = LSTM(output_dim=300, activation='tanh',
                           return_sequences=True)(merged_model)
@@ -72,7 +72,7 @@ def RNN_context_embed(ctx_feat_num, user_num, page_num, timestep_num=100):
     
     merged_model = TimeDistributed(Dense(output_dim=1, activation='relu'))(merged_model)
     
-    model = Model(input=[depth_input, context_input], output=[merged_model])
+    model = Model(input=[user_input, page_input, depth_input, context_input], output=[merged_model])
     
     model.compile(loss='mean_squared_error',
                          optimizer=optimizer,
