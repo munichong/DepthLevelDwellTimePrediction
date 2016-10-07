@@ -7,25 +7,27 @@ import re, numpy as np
 from pprint import pprint
 from pymongo import MongoClient
 from pymongo.errors import CursorNotFound
-from dwell_time_calculation import viewport_behaviors, print_viewport_dwell_dist
+from dwell_time_calculation import viewport_behaviors, print_viewport_dwell_dist, print_seq_len_dist
 from collections import defaultdict, Counter
 from bs4 import BeautifulSoup
 from user_agents import parse
 from urllib.parse import urlparse
 
+DATABASE = 'Forbes_Apr2016'
+# DATABASE = 'Forbes_Dec2015'
 
 client = MongoClient()
-userlog = client['Forbes_Dec2015']['FreqUserLogPV']
-articleInfo = client['Forbes_Dec2015']['ArticleInfo']
+userlog = client[DATABASE]['FreqUserLogPV']
+articleInfo = client[DATABASE]['ArticleInfo']
 
 
-COLD_START_THRESHOLD = 6
+COLD_START_THRESHOLD = 10
 
 
 
 client = MongoClient()
-user_freq_table = client['Forbes_Dec2015']['UserFreq_all']
-page_freq_table = client['Forbes_Dec2015']['PageFreq_all']
+user_freq_table = client[DATABASE]['UserFreq_all']
+page_freq_table = client[DATABASE]['PageFreq_all']
 
 def get_freq_uids(threshold=0):
     return user_freq_table.find({"freq": {"$gte":threshold}}, {'uid':1})
@@ -92,20 +94,21 @@ def categorize_device(raw_device):
         return 'asus'
     
     
-    if raw_device in ['cw-vi8', 'kfsawi', 'd101', 'b1-750', 'pixel c', 'a1-840fhd', 'k010', 'pro7d', 'ns-15t8lte', 'a1',
-                      'vk410', 'vk810 4g', 'qtaqz3', 'motorola xoom', 'p01m', 'b1-750', 'le pan tc802a', 'asus me173x',
-                      'xiaomi mi pad', 'dpm7827', 'trio axs 4g', 'b1-720', 'at7-c', 'a3-a20', 'hp slate 7 voice tab',
-                      'ns-p16at10', 'a200', 'telpad qs', 'hp 10'] \
-                      or raw_device[:len('lenovo')] == 'lenovo' or raw_device[:len('hudl')] == 'hudl' \
-                      or  raw_device[:len('rct')] == 'rct' or raw_device[:len('qmv')] == 'qmv':
-        return 'generic tablet'
-    if raw_device[:len('venue')] == 'venue':
-        return 'generic tablet'
+#     if raw_device in ['cw-vi8', 'kfsawi', 'd101', 'b1-750', 'pixel c', 'a1-840fhd', 'k010', 'pro7d', 'ns-15t8lte', 'a1',
+#                       'vk410', 'vk810 4g', 'qtaqz3', 'motorola xoom', 'p01m', 'b1-750', 'le pan tc802a', 'asus me173x',
+#                       'xiaomi mi pad', 'dpm7827', 'trio axs 4g', 'b1-720', 'at7-c', 'a3-a20', 'hp slate 7 voice tab',
+#                       'ns-p16at10', 'a200', 'telpad qs', 'hp 10', 'nexus 9', 'hive v 3g' ] \
+#                       or raw_device[:len('lenovo')] == 'lenovo' or raw_device[:len('hudl')] == 'hudl' \
+#                       or  raw_device[:len('rct')] == 'rct' or raw_device[:len('qmv')] == 'qmv':
+#         return 'generic tablet'
+#     if raw_device[:len('venue')] == 'venue':
+#         return 'generic tablet'
     if ' tablet' in raw_device:
         return 'generic tablet'
     
-    if raw_device in ['microsoft lumia 735', 'k007', 'htc 0p6b180'] or raw_device[:len('sgp')] == 'sgp' or raw_device[:len('lg')] == 'lg' or raw_device == 'vk700':
-        return 'generic smartphone'
+#     if raw_device in ['microsoft lumia 735', 'k007', 'htc 0p6b180'] or raw_device[:len('sgp')] == 'sgp' or raw_device[:len('lg')] == 'lg' or raw_device == 'vk700':
+#         return 'generic smartphone'
+    
     return raw_device
 
 def categorize_browser(raw_browser):
@@ -322,8 +325,8 @@ while not done:
                 unix_start_time = pv_doc['unix_start_time']
                       
                  
-                if unix_start_time < 1449792000 or unix_start_time > 1450656000:
-                    continue
+#                 if unix_start_time < 1449792000 or unix_start_time > 1450656000:
+#                     continue
                 
                 """ if this page is not a frequent page """
 #                 if url not in freq_page_set:
@@ -411,6 +414,11 @@ for depth_dwell, count in sorted(depth_dwell_counter.items(), key=lambda x: x[0]
 print("******************************")
 del depth_dwell_counter
 
+print_seq_len_dist()
+
+'''
+print_viewport_dwell_dist()
+'''
 
 print("\n*************** The Distribution of User Geo ***************")
 total = sum(geo_counter.values())
@@ -418,9 +426,10 @@ geo_convert2OTHER = set()
 for geo, count in sorted(geo_counter.items(), key=lambda x: x[1], reverse=True):
     if count/total < 0.001:
         geo_convert2OTHER.add(geo)
-        print(geo, "\t", count, "\t", count/total, '\t', "CONVERT TO 'other'")
+#         print(geo, "\t", count, "\t", count/total, '\t', "CONVERT TO 'other'")
     else:
-        print(geo, "\t", count, "\t", count/total)
+#         print(geo, "\t", count, "\t", count/total)
+        pass
 print("******************************")
 del geo_counter
 
@@ -443,15 +452,21 @@ del section_counter
 print("\n*************** The Distribution of Body Length ***************")
 total = sum(length_counter.values())
 for length, count in sorted(length_counter.items(), key=lambda x: x[0]):
-    print(length, "\t", count, "\t", count/total)
+#     print(length, "\t", count, "\t", count/total)
+    pass
 print("******************************")
 del length_counter
 
 
 print("\n*************** The Distribution of Devices ***************")
 total = sum(device_counter.values())
+device_convert2OTHER = set()
 for device, count in sorted(device_counter.items(), key=lambda x: x[1], reverse=True):
-    print(device, "\t", count, "\t", count/total)
+    if count/total < 0.0005:
+        device_convert2OTHER.add(device)
+        print(device, "\t", count, "\t", count/total, '\t', "CONVERT TO 'other'")
+    else:
+        print(device, "\t", count, "\t", count/total)
 print("******************************")
 del device_counter
 
@@ -459,7 +474,7 @@ print("\n*************** The Distribution of OS ***************")
 total = sum(os_counter.values())
 os_convert2OTHER = set()
 for os, count in sorted(os_counter.items(), key=lambda x: x[1], reverse=True):
-    if count < os_counter['other']:
+    if count < os_counter['other'] or count < 50:
         os_convert2OTHER.add(os)
         print(os, "\t", count, "\t", count/total, '\t', "CONVERT TO 'other'")
     else:
@@ -486,9 +501,9 @@ for commentCount, count in sorted(commentCount_counter.items(), key=lambda x: x[
 print("******************************")
 del commentCount_counter
 
-'''
-print_viewport_dwell_dist()
-'''
+
+
+
 
 
 
@@ -504,7 +519,7 @@ user_freq2 = defaultdict(int)
 page_freq2 = defaultdict(int)
 valid_pv_num2 = 0
 def filter_pageviews_by_minPVnum(pvs):
-    FURTHER_COLD_START_THRESHOLD = 1 # fups.COLD_START_THRESHOLD
+    FURTHER_COLD_START_THRESHOLD = 4 # fups.COLD_START_THRESHOLD
     filtered_dataset = []
     global valid_pv_num2, user_freq2, page_freq2
     for pv in pvs:

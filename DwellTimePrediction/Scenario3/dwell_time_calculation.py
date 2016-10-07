@@ -11,7 +11,7 @@ from collections import Counter
 
 # page_dwell_time_threshold = 120
 MIN_SCREEN_DWELL_TIME = 60
-MAX_SEQ_LEN = 20
+MAX_SEQ_LEN = 10
 
 
 def is_valid_screen_dwell(dwell):
@@ -20,6 +20,7 @@ def is_valid_screen_dwell(dwell):
     return True
 
 viewport_dwell_counter = Counter()
+seq_len_counter = Counter()
 
 def viewport_behaviors(loglist):
 #     print(loglist)
@@ -86,10 +87,16 @@ def viewport_behaviors(loglist):
         else:
             continue
            
+           
     ''' Remove the pageviews which have no action or have too many actions '''
-    if skip_pageview or not pv_summary or len(pv_summary) > MAX_SEQ_LEN:
+    
+    if skip_pageview or not pv_summary:
         return None
     
+    seq_len_counter.update([len(pv_summary)])
+    if len(pv_summary) > MAX_SEQ_LEN:
+        return None
+        
     viewport_dwell_counter.update( [s[2] for s in pv_summary] )
     
     depth_dwell_stats = get_depth_dwell_stats(pv_summary)
@@ -101,10 +108,19 @@ def viewport_behaviors(loglist):
     return depth_dwell_stats
 
 
+def print_seq_len_dist():
+    print("\n*************** The Distribution of The Action Counts ***************")
+    global seq_len_counter
+    total = sum(seq_len_counter.values())
+    for seq_len, count in seq_len_counter.items():
+        print(seq_len, '\t', count, '\t', count/total)
+    print("******************************")
+    del seq_len_counter
+
 def print_viewport_dwell_dist():
     print("\n*************** The Distribution of The Viewport-level Dwell Time ***************")
-    total = sum(viewport_dwell_counter.values())
     global viewport_dwell_counter
+    total = sum(viewport_dwell_counter.values())
     for viewport_dwell, count in viewport_dwell_counter.items():
         print(viewport_dwell, '\t', count, '\t', count/total)
     print("******************************")

@@ -51,8 +51,8 @@ def merge_Xs(*Xs):
 
 
 # BATCH_SIZE = len(mig.X_train)
-BATCH_SIZE = 512
-NUM_EPOCH = 40
+BATCH_SIZE = 256
+NUM_EPOCH = 20
 
 num_batch = math.ceil( len(mig.X_train) / BATCH_SIZE )
 best_epoch_lr = 0

@@ -147,8 +147,10 @@ def input_vector_builder(pageviews):
             feature_dict['='.join(['commentCount', commentCount])] = 1
             
             
-            
-            feature_dict['='.join(['device', device])] = 1
+            if device in tts.device_convert2OTHER:
+                feature_dict['='.join(['device', device])] = 1
+            else:
+                feature_dict['='.join(['device', 'OTHER'])] = 1
             if os in tts.os_convert2OTHER:
                 feature_dict['='.join(['os', 'other'])] = 1
             else:
