@@ -8,6 +8,8 @@ from numpy import mean
 from collections import defaultdict
 from math import log
 from collections import Counter
+from models_training import TASK, VIEWABILITY_THRESHOLD
+
 
 # page_dwell_time_threshold = 120
 MIN_SCREEN_DWELL_TIME = 60
@@ -140,6 +142,15 @@ def get_depth_dwell_stats(pv_summary):
             if depth >= top and depth <= bottom:
 #             if depth >= top and (depth == 100 or depth < bottom):
                 accumu_dwell += dwell
+        
+        if TASK == 'c':
+            if accumu_dwell >= VIEWABILITY_THRESHOLD:
+                accumu_dwell = 1
+            else:
+                accumu_dwell = 0
+        elif TASK == 'r':
+            accumu_dwell = accumu_dwell   
+        
         depth_dwell_stats[depth] = accumu_dwell
 
     ''' Find the corresponding viewport window for each page depth '''

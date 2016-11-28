@@ -12,6 +12,9 @@ from collections import defaultdict, Counter
 from bs4 import BeautifulSoup
 from user_agents import parse
 from urllib.parse import urlparse
+from models_training import TASK, VIEWABILITY_THRESHOLD
+
+
 
 DATABASE = 'Forbes_Apr2016'
 # DATABASE = 'Forbes_Dec2015'
@@ -335,12 +338,11 @@ while not done:
         
                 depth_dwell = viewport_behaviors(pv_doc['loglist']) 
 #                 print(depth_dwell)
-                if depth_dwell is None or all(v == 0 for v in depth_dwell):
-                    continue                
+                if depth_dwell is None:
+                    continue     
                 
-                
-                depth_dwell_counter.update(depth_dwell)
-                
+                if TASK == 'r' and all(v == 0 for v in depth_dwell):
+                    continue
                 
                 ''' AUXILIARY FEATURES '''
                 screen_size = pv_doc['loglist'][0]['additionalinfo']['screenSize'] if 'screenSize' in pv_doc['loglist'][0]['additionalinfo'] else 'unknown'
@@ -348,7 +350,7 @@ while not done:
                 viewport_size = pv_doc['loglist'][0]['additionalinfo']['viewportSize'] if 'viewportSize' in pv_doc['loglist'][0]['additionalinfo'] else 'unknown'
                 
                 user_geo = get_user_geo(pv_doc['country'], pv_doc['state'])
-                geo_counter.update([user_geo])
+                
                 
                 isodate = pv_doc['local_start_time']
                 if isodate:
@@ -364,16 +366,19 @@ while not done:
                 body_length, channel, section, channel_group, section_group, freshness, \
                 page_type, templateType, blogType, storyType, image, writtenByForbesStaff, calledOutCommentCount = article_info
                                 
-                channel_counter.update(channel_group)
-                section_counter.update(section_group)
-                length_counter.update([body_length])
-                
-                
                 
                 device, os, browser = get_info_from_agent(pv_doc['ua'])
                 
                 if browser == 'moatbot': # suspect robot
                     continue
+                
+                
+                depth_dwell_counter.update(depth_dwell)
+                geo_counter.update([user_geo])
+                channel_counter.update(channel_group)
+                section_counter.update(section_group)
+                length_counter.update([body_length])
+                
                 
                 device_counter.update([device])
                 os_counter.update([os])
@@ -583,8 +588,8 @@ for pv in all_pageviews:
         pages_in_train[url] += 1
         
     else:
-        if (users_in_val[uid] / (user_freq2[uid] - users_in_train[uid]) < 0.7 and
-        pages_in_val[url] / (page_freq2[url] - pages_in_train[url]) < 0.7):
+        if (users_in_val[uid] / (user_freq2[uid] - users_in_train[uid]) < 0.95 and
+        pages_in_val[url] / (page_freq2[url] - pages_in_train[url]) < 0.95):
             validate_set.append(pv)
             users_in_val[uid] += 1
             pages_in_val[url] += 1
@@ -592,6 +597,23 @@ for pv in all_pageviews:
 #                 print('3')
         else:
             test_set.append(pv)
+
+
+
+if TASK == 'c':
+    positive_num_train = {0:0, 1:0}
+    for pv in training_set:
+        for depth_row in pv.depth_level_rows:
+            positive_num_train[depth_row[0]] += 1
+    print("\nIn the training data, %f depth dwell times are at least %d seconds" % (positive_num_train[1]/sum(positive_num_train.values()), VIEWABILITY_THRESHOLD))
+    
+    positive_num_val = {0:0, 1:0}
+    for pv in validate_set:
+        for depth_row in pv.depth_level_rows:
+            positive_num_val[depth_row[0]] += 1
+    print("In the validation data, %f depth dwell times are at least %d seconds" % (positive_num_val[1]/sum(positive_num_val.values()), VIEWABILITY_THRESHOLD))
+
+
 
 print()
 if not (users_in_val.keys() - users_in_train.keys()):
