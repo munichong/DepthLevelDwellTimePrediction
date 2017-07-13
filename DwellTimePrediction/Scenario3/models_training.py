@@ -10,6 +10,8 @@ from sklearn.metrics import log_loss, mean_squared_error
 from sklearn.linear_model import SGDRegressor
 from sklearn.metrics import log_loss, roc_auc_score, accuracy_score
 
+start_time = time.time()
+
 import model_input_gen as mig # This will run other modules
 from keras_models import FNN_onestep_r, FNN_onestep_c, RNN_upc_embed_r, RNN_upc_embed_c, linearRegression_keras, logisticRegression_keras
 from keras.models import load_model
@@ -83,7 +85,7 @@ class classification_metric_batch:
         acc = accuracy_score(self.y_true, np.where(np.array(self.y_pred)>=0.5, 1, 0))
         auc = roc_auc_score(self.y_true, self.y_pred)
         
-#         ''' TODO: Add poster filter here: func, d, overlap '''
+
         
         return "(ll=%.4f, acc=%.4f, auc=%.4f; 1-25%%=%s, 26-75%%=%s, 76-100%%=%s" % (ll, acc, auc, 
                                                                                      self.bucket_results(0, 24), 
@@ -195,7 +197,7 @@ class pooling_filter():
 
 if __name__ == "__main__":
     
-    start_time = time.time()
+    
     
     num_batch = math.ceil( len(mig.X_train) / BATCH_SIZE )
     best_epoch_lr = 0

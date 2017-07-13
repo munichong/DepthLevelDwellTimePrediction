@@ -2,7 +2,7 @@
 Created on Aug 25, 2016
 @author: munichong
 '''
-import random, numpy as np
+import random, numpy as np, hashlib
 from collections import defaultdict, Counter
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_extraction import DictVectorizer
@@ -37,8 +37,8 @@ def add_vector_features(feat_dict, name_head, vector):
         feat_dict[ ''.join([name_head, str(i)]) ] = vector[i]
 
 def hashstr(s):
-    return hash(s)
-#     return int(hashlib.md5(s.encode('utf8')).hexdigest(), 16)%(1e+6-1)+1
+#     return hash(s)
+    return int(hashlib.md5(s.encode('utf8')).hexdigest(), 16)%(1e+6-1)+1
 
 
 
@@ -53,10 +53,10 @@ class X_instance():
     def gen_more_feats(self):
         return self.context
     
-    def dense_depth(self):
-        dense_vec = [0] * 100
-        dense_vec[self.depth - 1] = 1
-        return np.array(dense_vec)
+#     def dense_depth(self):
+#         dense_vec = [0] * 100
+#         dense_vec[self.depth - 1] = 1
+#         return np.array(dense_vec)
 
 
 
@@ -92,10 +92,12 @@ def input_vector_builder(pageviews):
             #             feature_dict['depth'] = index + 1
             depth = index + 1 # range: [1, 100], must be an integer
             
-            if uid not in user2index:
-                user2index[uid] = len(user2index) + 1
-            if clean_url not in page2index:
-                page2index[clean_url] = len(page2index) + 1
+            hashed_uid = hashstr(uid)
+            hashed_url = hashstr(clean_url)
+            if hashed_uid not in user2index:
+                user2index[hashed_uid] = len(user2index) + 1
+            if hashed_url not in page2index:
+                page2index[hashed_url] = len(page2index) + 1
             
             
             features = []
@@ -167,7 +169,7 @@ def input_vector_builder(pageviews):
             
             features = tuple(features)
             
-            x_inst = X_instance(features, depth, uid, clean_url)
+            x_inst = X_instance(features, depth, hashed_uid, hashed_url)
             
             
             pv_X.append(x_inst)
