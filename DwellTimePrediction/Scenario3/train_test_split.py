@@ -7,13 +7,16 @@ import re, numpy as np
 from pprint import pprint
 from pymongo import MongoClient
 from pymongo.errors import CursorNotFound
-from dwell_time_calculation import viewport_behaviors, print_viewport_dwell_dist, print_seq_len_dist
 from collections import defaultdict, Counter
 from bs4 import BeautifulSoup
 from user_agents import parse
 from urllib.parse import urlparse
-from models_training import TASK, VIEWABILITY_THRESHOLD
 
+from dwell_time_calculation import viewport_behaviors, print_viewport_dwell_dist, print_seq_len_dist
+from prespecified_parameters import TASK, VIEWABILITY_THRESHOLD
+
+
+COLD_START_THRESHOLD = 8
 
 
 DATABASE = 'Forbes_Apr2016'
@@ -22,9 +25,6 @@ DATABASE = 'Forbes_Apr2016'
 client = MongoClient()
 userlog = client[DATABASE]['FreqUserLogPV']
 articleInfo = client[DATABASE]['ArticleInfo']
-
-
-COLD_START_THRESHOLD = 10
 
 
 
@@ -161,21 +161,23 @@ def get_freshness(doc, pv_start_time):
         return 'unknown'
 
 def get_channel_group(doc):
+    channel_group = defaultdict(int)
     if 'channelSection' not in doc:
-        return ['unknown']
-    channel_group = set()
-    for chanSec_dict in doc['channelSection']:
-        channel_group.add(chanSec_dict['channelId'].lower())
-    return list(channel_group)
+        channel_group['unknown'] += 1
+    else:
+        for chanSec_dict in doc['channelSection']:
+            channel_group[chanSec_dict['channelId'].lower()] += 1
+    return channel_group.keys()
 
 def get_section_group(doc):
+    section_group = defaultdict(int)
     if 'channelSection' not in doc:
-        return ['unknown']
-    section_group = set()
-    for chanSec_dict in doc['channelSection']:
-        if 'sectionId' in chanSec_dict:
-            section_group.add(chanSec_dict['sectionId'].lower())
-    return list(section_group)
+        section_group['unknown'] += 1
+    else:
+        for chanSec_dict in doc['channelSection']:
+            if 'sectionId' in chanSec_dict:
+                section_group[chanSec_dict['sectionId'].lower()] += 1
+    return section_group.keys()
 
 def get_commentCount(count):
     if count == 0:
@@ -226,8 +228,8 @@ def get_article_info(userlog_url, pv_start_time):
 #             body_length = 'unknown'
         channel = doc['displayChannel'] if 'displayChannel' in doc else 'unknown'
         section = doc['displaySection'] if 'displaySection' in doc else 'unknown'
-        channel_group = get_channel_group(doc) # list
-        section_group = get_section_group(doc) # list
+        channel_group = get_channel_group(doc) # defaultdict(int)
+        section_group = get_section_group(doc) # defaultdict(int)
         freshness = get_freshness(doc, pv_start_time)
         
         page_type = doc['type'].lower() if 'type' in doc else 'unknown'
@@ -317,7 +319,7 @@ while not done:
         for user_doc in freq_uids: # for each unique user
             uid = user_doc['uid']
                         
-            if user_num % 2000 == 0:
+            if user_num % 10000 == 0:
                 print(user_num)
             user_num += 1
             
@@ -336,7 +338,7 @@ while not done:
 #                     continue
                 
         
-                depth_dwell = viewport_behaviors(pv_doc['loglist']) 
+                depth_dwell = viewport_behaviors(pv_doc['loglist'], TASK, VIEWABILITY_THRESHOLD) 
 #                 print(depth_dwell)
                 if depth_dwell is None:
                     continue     
@@ -365,7 +367,7 @@ while not done:
 #                 print(article_info)
                 body_length, channel, section, channel_group, section_group, freshness, \
                 page_type, templateType, blogType, storyType, image, writtenByForbesStaff, calledOutCommentCount = article_info
-                                
+                
                 
                 device, os, browser = get_info_from_agent(pv_doc['ua'])
                 
@@ -431,9 +433,9 @@ geo_convert2OTHER = set()
 for geo, count in sorted(geo_counter.items(), key=lambda x: x[1], reverse=True):
     if count/total < 0.001:
         geo_convert2OTHER.add(geo)
-#         print(geo, "\t", count, "\t", count/total, '\t', "CONVERT TO 'other'")
+        print(geo, "\t", count, "\t", count/total, '\t', "CONVERT TO 'other'")
     else:
-#         print(geo, "\t", count, "\t", count/total)
+        print(geo, "\t", count, "\t", count/total)
         pass
 print("******************************")
 del geo_counter
@@ -520,34 +522,35 @@ print("density =", valid_pv_num/float(len(user_freq) * len(page_freq)))
 print()
 
 
-user_freq2 = defaultdict(int)
-page_freq2 = defaultdict(int)
-valid_pv_num2 = 0
-def filter_pageviews_by_minPVnum(pvs):
-    FURTHER_COLD_START_THRESHOLD = 4 # fups.COLD_START_THRESHOLD
-    filtered_dataset = []
-    global valid_pv_num2, user_freq2, page_freq2
-    for pv in pvs:
-        uid = pv.uid
-        url = pv.url
-        if ( user_freq[uid] < FURTHER_COLD_START_THRESHOLD or 
-             page_freq[url] < FURTHER_COLD_START_THRESHOLD ):
-            continue
-        user_freq2[uid] += 1
-        page_freq2[url] += 1 
-        valid_pv_num2 += 1
-        filtered_dataset.append(pv)
-    return filtered_dataset
 
-
-all_pageviews = filter_pageviews_by_minPVnum(all_pageviews)
-
-print()
-print("=============== Statistics of Further Data ================")
-print("valid_pv_num2 =", valid_pv_num2)
-print(len(user_freq2), "unique users and", len(page_freq2), "unique pages")
-print("density =", valid_pv_num2/float(len(user_freq2) * len(page_freq2)))
-print()
+# user_freq2 = defaultdict(int)
+# page_freq2 = defaultdict(int)
+# valid_pv_num2 = 0
+# def filter_pageviews_by_minPVnum(pvs):
+#     FURTHER_COLD_START_THRESHOLD = 4 # fups.COLD_START_THRESHOLD
+#     filtered_dataset = []
+#     global valid_pv_num2, user_freq2, page_freq2
+#     for pv in pvs:
+#         uid = pv.uid
+#         url = pv.url
+#         if ( user_freq[uid] < FURTHER_COLD_START_THRESHOLD or 
+#              page_freq[url] < FURTHER_COLD_START_THRESHOLD ):
+#             continue
+#         user_freq2[uid] += 1
+#         page_freq2[url] += 1 
+#         valid_pv_num2 += 1
+#         filtered_dataset.append(pv)
+#     return filtered_dataset
+# 
+# 
+# all_pageviews = filter_pageviews_by_minPVnum(all_pageviews)
+# 
+# print()
+# print("=============== Statistics of Further Data ================")
+# print("valid_pv_num2 =", valid_pv_num2)
+# print(len(user_freq2), "unique users and", len(page_freq2), "unique pages")
+# print("density =", valid_pv_num2/float(len(user_freq2) * len(page_freq2)))
+# print()
 
 
 
@@ -564,39 +567,73 @@ users_in_val = defaultdict(int)
 pages_in_val = defaultdict(int)
 
 # np.random.shuffle(all_pageviews)
+# for pv in all_pageviews:
+#     uid = pv.uid
+#     url = pv.url
+#     
+#     if uid not in users_in_train or url not in pages_in_train:
+#         ''' if this is the first time that we see this user or this page '''
+#         training_set.append(pv)
+# #         if uid == '49bdb98c-d8c4-1bce-bb92-a2e0f9f3a3d5':
+# #             print('1', users_in_train[uid] / user_freq2[uid], pages_in_train[url] / page_freq2[url])
+#         ''' mark that the user and the page has been added to training data once '''
+#         users_in_train[uid] += 1
+#         pages_in_train[url] += 1
+#         
+#     elif (users_in_train[uid] / user_freq2[uid] < 0.7 or
+#         pages_in_train[url] / page_freq2[url] < 0.7):
+#         ''' if we have seen this user and page, but not enough history in the training data '''
+#         training_set.append(pv)
+# #         if uid == '49bdb98c-d8c4-1bce-bb92-a2e0f9f3a3d5':
+# #             print('2', users_in_train[uid] / user_freq2[uid], pages_in_train[url] / page_freq2[url])
+#         ''' mark that the user and the page has been added to training data once '''
+#         users_in_train[uid] += 1
+#         pages_in_train[url] += 1
+#         
+#     else:
+#         if (users_in_val[uid] / (user_freq2[uid] - users_in_train[uid]) < 0.95 and
+#         pages_in_val[url] / (page_freq2[url] - pages_in_train[url]) < 0.95):
+#             validate_set.append(pv)
+#             users_in_val[uid] += 1
+#             pages_in_val[url] += 1
+# #             if uid == '49bdb98c-d8c4-1bce-bb92-a2e0f9f3a3d5':
+# #                 print('3')
+#         else:
+#             test_set.append(pv)
+
+
 for pv in all_pageviews:
     uid = pv.uid
     url = pv.url
     
-    if uid not in users_in_train or url not in pages_in_train:
-        ''' if this is the first time that we see this user or this page '''
-        training_set.append(pv)
-#         if uid == '49bdb98c-d8c4-1bce-bb92-a2e0f9f3a3d5':
-#             print('1', users_in_train[uid] / user_freq2[uid], pages_in_train[url] / page_freq2[url])
-        ''' mark that the user and the page has been added to training data once '''
-        users_in_train[uid] += 1
-        pages_in_train[url] += 1
-        
-    elif (users_in_train[uid] / user_freq2[uid] < 0.7 or
-        pages_in_train[url] / page_freq2[url] < 0.7):
-        ''' if we have seen this user and page, but not enough history in the training data '''
-        training_set.append(pv)
-#         if uid == '49bdb98c-d8c4-1bce-bb92-a2e0f9f3a3d5':
-#             print('2', users_in_train[uid] / user_freq2[uid], pages_in_train[url] / page_freq2[url])
-        ''' mark that the user and the page has been added to training data once '''
-        users_in_train[uid] += 1
-        pages_in_train[url] += 1
-        
+    if user_freq[uid] > 8 and page_freq[url] > 8:
+        test_set.append(pv)
+        user_freq[uid] -= 1
+        page_freq[url] -= 1
+    elif user_freq[uid] > 5 and page_freq[url] > 5:
+        validate_set.append(pv)
+        user_freq[uid] -= 1
+        page_freq[url] -= 1
+        users_in_val[uid] += 1
+        pages_in_val[url] += 1
     else:
-        if (users_in_val[uid] / (user_freq2[uid] - users_in_train[uid]) < 0.95 and
-        pages_in_val[url] / (page_freq2[url] - pages_in_train[url]) < 0.95):
-            validate_set.append(pv)
-            users_in_val[uid] += 1
-            pages_in_val[url] += 1
-#             if uid == '49bdb98c-d8c4-1bce-bb92-a2e0f9f3a3d5':
-#                 print('3')
-        else:
-            test_set.append(pv)
+        training_set.append(pv)
+        users_in_train[uid] += 1
+        pages_in_train[url] += 1
+        
+#     if user_freq[uid] <= 5 or page_freq[url] <= 5:
+#         training_set.append(pv)
+#         ''' mark that the user and the page has been added to training data once '''
+#         users_in_train[uid] += 1
+#         pages_in_train[url] += 1
+#     elif user_freq[uid] <= 8 or page_freq[url] <= 8:
+#         validate_set.append(pv)
+#         users_in_val[uid] += 1
+#         pages_in_val[url] += 1
+#     else:
+#         test_set.append(pv)
+
+
 
 
 
@@ -653,11 +690,11 @@ for pv in validate_set:
 print()
 print("The frequency of validation users in the training data:")
 for num_in_train, user_count in sorted(val_userFreq_in_train.items(), key=lambda x: x[0]):
-    print("%d users in validation set have %d record in training data" % (user_count, num_in_train))
+    print("%d users in validation set have %d records in training data" % (user_count, num_in_train))
 print()
 print("The frequency of validation pages in the training data:")
 for num_in_train, page_count in sorted(val_pageFreq_in_train.items(), key=lambda x: x[0]):
-    print("%d pages in validation set have %d record in training data" % (page_count, num_in_train))
+    print("%d pages in validation set have %d records in training data" % (page_count, num_in_train))
 print()
 
 
@@ -678,9 +715,10 @@ print()
 print(len(training_set), "pageviews in the training set")
 print(len(validate_set), "pageviews in the validation set")
 print(len(test_set), "pageviews in the test set")
-print("The fraction of training data is", len(training_set) / float(valid_pv_num2))
-print("The fraction of validation data is", len(validate_set) / float(valid_pv_num2))
-print("The fraction of test data is", len(test_set) / float(valid_pv_num2))
+total_pv = len(training_set) + len(validate_set) + len(test_set)
+print("The fraction of training data is", len(training_set) / total_pv)
+print("The fraction of validation data is", len(validate_set) / total_pv)
+print("The fraction of test data is", len(test_set) / total_pv)
 print()
 
 
@@ -691,8 +729,8 @@ del user_freq_table
 del page_freq_table
 del user_freq
 del page_freq
-del user_freq2
-del page_freq2
+# del user_freq2
+# del page_freq2
 del users_in_train
 del pages_in_train
 del users_in_val

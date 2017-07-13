@@ -3,21 +3,22 @@ Created on Aug 28, 2016
 
 @author: munichong
 '''
-import sys, math
+import sys, math, time, pickle
 import numpy as np
-import model_input_gen as mig
+from math import sqrt
+from sklearn.metrics import log_loss, mean_squared_error
 from sklearn.linear_model import SGDRegressor
 from sklearn.metrics import log_loss, roc_auc_score, accuracy_score
+
+import model_input_gen as mig # This will run other modules
 from keras_models import FNN_onestep_r, FNN_onestep_c, RNN_upc_embed_r, RNN_upc_embed_c, linearRegression_keras, logisticRegression_keras
 from keras.models import load_model
+from prespecified_parameters import TASK, VIEWABILITY_THRESHOLD
 
 
-
-TASK = 'c'
-VIEWABILITY_THRESHOLD = 1
 # BATCH_SIZE = len(mig.X_train)
 BATCH_SIZE = 128
-NUM_EPOCH = 20
+NUM_EPOCH = 6
 
 
 
@@ -44,18 +45,24 @@ class regression_metric_batch:
     def __init__(self):
         self.total_numerator = 0
         self.total_denominator = 0
+        self.y_true = []
+        self.y_pred = []
     
     def update(self, y_batch_true, y_batch_pred):
         for y_true, y_pred in zip(y_batch_true, y_batch_pred):
             self.total_numerator += ((np.array([y[0] for y in y_pred]) - 
-                                      np.array([y[0] for y in y_true])
-                                      ) ** 2).sum()
-            
+                                          np.array([y[0] for y in y_true])
+                                          ) ** 2).sum()
+                
             self.total_denominator += len(y_true)
-
+            self.y_true.extend([y[0] for y in y_true])
+            self.y_pred.extend([y[0] for y in y_pred])
+    
+    def RMSD(self):
+        return math.sqrt(self.total_numerator / self.total_denominator)
                 
     def result(self):
-        return math.sqrt(self.total_numerator / self.total_denominator)
+        return "%.4f" % self.RMSD()
 
 
 class classification_metric_batch:
@@ -64,18 +71,24 @@ class classification_metric_batch:
         self.y_pred = []
     
     def update(self, y_batch_true, y_batch_pred):
-        for y_true, y_pred in zip(y_batch_true, y_batch_pred):
+        for y_true, y_pred in zip(y_batch_true, y_batch_pred):  
             self.y_true.extend([y[0] for y in y_true])
             self.y_pred.extend([y[0] for y in y_pred])
     
+    def LogLoss(self):
+        return log_loss(self.y_true, self.y_pred)
+    
     def result(self):
         ll = log_loss(self.y_true, self.y_pred)
-        auc = roc_auc_score(self.y_true, self.y_pred)
         acc = accuracy_score(self.y_true, np.where(np.array(self.y_pred)>=0.5, 1, 0))
-        return (ll, auc, acc, 
-                (self.bucket_results(0, 24),
-                 self.bucket_results(25, 74),
-                 self.bucket_results(75, 99)))
+        auc = roc_auc_score(self.y_true, self.y_pred)
+        
+#         ''' TODO: Add poster filter here: func, d, overlap '''
+        
+        return "(ll=%.4f, acc=%.4f, auc=%.4f; 1-25%%=%s, 26-75%%=%s, 76-100%%=%s" % (ll, acc, auc, 
+                                                                                     self.bucket_results(0, 24), 
+                                                                                     self.bucket_results(25, 74), 
+                                                                                     self.bucket_results(75, 99))
 
     def bucket_results(self, start, end):
         '''
@@ -89,18 +102,100 @@ class classification_metric_batch:
             if i % 100 >= start and i % 100 <= end:
                 y_true_bucket.append(self.y_true[i])
                 y_pred_bucket.append(self.y_pred[i])
-        return (log_loss(y_true_bucket, y_pred_bucket),
-                roc_auc_score(y_true_bucket, y_pred_bucket),
-                accuracy_score(y_true_bucket, np.where(np.array(y_pred_bucket)>=0.5, 1, 0))
-                )
+        return "(ll=%.4f, acc=%.4f, auc=%.4f)" % (log_loss(y_true_bucket, y_pred_bucket), 
+                                                  accuracy_score(y_true_bucket, np.where(np.array(y_pred_bucket)>=0.5, 1, 0)), 
+                                                  roc_auc_score(y_true_bucket, y_pred_bucket))
 
 def merge_Xs(*Xs):
     return np.dstack(Xs)
 
-
-
+class pooling_filter():
+    def __init__(self):
+        self.functions = [np.min, self.quartile25, np.mean, np.median, self.quartile75, np.max]
+                
+    def quartile25(self, y):
+        return np.percentile(y, 25)
+    
+    def quartile75(self, y):
+        return np.percentile(y, 75)
+    
+    def train_filter(self, origin_pred, ground_truth, origin_result):
+        ''' refresh these three every time when better validation error is found '''
+        self.best_func = None
+        self.best_interval = None
+        self.best_stride = None
+        
+        best_result = origin_result
+        for calculate_newVal in self.functions:
+            for d in range(2, 10):
+                pv_num = 0
+                filtered_pred = []
+                while pv_num < len(ground_truth) / 100:
+                    start_index = pv_num * 100
+                    pv_num += 1
+                    end_index = pv_num * 100
+                    group = 0
+                    while group * d < 100:
+                        l = origin_pred[start_index: end_index][group * d: group * d + d]    
+                        new_val = calculate_newVal(l)
+                        filtered_pred.extend([new_val] * len(l))
+                        group += 1
+                
+                if TASK == 'c':
+                    res = round(log_loss(ground_truth, filtered_pred), 4)
+                    print("Filtered Logloss (", calculate_newVal, "d =", d, "):", res)
+                elif TASK == 'r':
+                    res = round(sqrt(mean_squared_error(ground_truth, filtered_pred)), 4)
+                    print("Filtered RMSD (", calculate_newVal, "d =", d, "):", res)
+                
+                if res < best_result:
+                    best_result = res
+                    self.best_func = calculate_newVal
+                    self.best_interval = d
+        print("\nThe best result is", best_result, "\nThe best function is", self.best_func, "\nThe best interval is", self.best_interval)
+                    
+    def predict_filter(self, origin_pred, ground_truth, origin_result):            
+        if not self.best_func:
+            print("No saved filter !!!")
+            return
+            
+        d = self.best_interval
+        calculate_newVal = self.best_func
+        
+        pv_num = 0
+        filtered_pred = []
+        while pv_num < len(ground_truth) / 100:
+            start_index = pv_num * 100
+            pv_num += 1
+            end_index = pv_num * 100
+            group = 0
+            while group * self.best_interval < 100:
+                l = origin_pred[start_index: end_index][group * d: group * d + d]    
+                new_val = calculate_newVal(l)
+                filtered_pred.extend([new_val] * len(l))
+                group += 1
+        
+        res = None
+        if TASK == 'c':
+#             res = round(log_loss(ground_truth, filtered_pred), 4)
+            print("Filtered Logloss (", calculate_newVal, "d =", d, "):")
+            res = classification_metric_batch()
+        elif TASK == 'r':
+#             res = round(sqrt(mean_squared_error(ground_truth, filtered_pred)), 4)
+            print("Filtered RMSD (", calculate_newVal, "d =", d, "):")
+            res = regression_metric_batch()
+        res.y_true = ground_truth
+        res.y_pred = filtered_pred
+        print(res.result())
+            
+            
+            
+            
+            
 
 if __name__ == "__main__":
+    
+    start_time = time.time()
     
     num_batch = math.ceil( len(mig.X_train) / BATCH_SIZE )
     best_epoch_lr = 0
@@ -109,22 +204,23 @@ if __name__ == "__main__":
     # sgdRegressor = SGDRegressor()
     
     print('\nBuild model...')
-    # rnn = RNN_simple(len(mig.vectorizer.feature_names_))
+    # rnn = RNN_simple(len(mig.vectorizer.feat_dict))
     if TASK == 'r':
-        rnn = RNN_upc_embed_r(len(mig.vectorizer.feature_names_), mig.unique_users_num, mig.unique_pages_num)
-#         rnn = FNN_onestep_r(len(mig.vectorizer.feature_names_), mig.unique_users_num, mig.unique_pages_num)
+        rnn = RNN_upc_embed_r(len(mig.vectorizer.feat_dict), mig.unique_users_num, mig.unique_pages_num)
+#         rnn = FNN_onestep_r(len(mig.vectorizer.feat_dict), mig.unique_users_num, mig.unique_pages_num)
     elif TASK =='c':
-        rnn = RNN_upc_embed_c(len(mig.vectorizer.feature_names_), mig.unique_users_num, mig.unique_pages_num)
-#         rnn = FNN_onestep_c(len(mig.vectorizer.feature_names_), mig.unique_users_num, mig.unique_pages_num)
+        rnn = RNN_upc_embed_c(len(mig.vectorizer.feat_dict), mig.unique_users_num, mig.unique_pages_num)
+#         rnn = FNN_onestep_c(len(mig.vectorizer.feat_dict), mig.unique_users_num, mig.unique_pages_num)
     
     if TASK == 'r':
-        lr = linearRegression_keras(len(mig.vectorizer.feature_names_) + 1)
+        lr = linearRegression_keras(len(mig.vectorizer.feat_dict) + 1)
     elif TASK == 'c':
-        lr = logisticRegression_keras(len(mig.vectorizer.feature_names_) + 1)
+        lr = logisticRegression_keras(len(mig.vectorizer.feat_dict) + 1)
     
     
     globalAverage = GlobalAverage()
     
+    post_filter = pooling_filter()
     
     # _array = []
     train_error_history = []
@@ -149,20 +245,22 @@ if __name__ == "__main__":
             loss_lr = lr.train_on_batch(merge_Xs(X_batch_ctx, X_batch_dep), y_batch)
         
             ''' RNN '''
+#             print(X_batch_dep.shape, X_batch_ctx.shape, X_batch_u.shape, X_batch_p.shape)
+#             print((len(mig.vectorizer.feat_dict), mig.unique_users_num, mig.unique_pages_num))
             loss_rnn = rnn.train_on_batch({'dep_input':X_batch_dep,
                                            'ctx_input':X_batch_ctx,
                                            'user_input': X_batch_u,
                                            'page_input': X_batch_p,
-                                           },y_batch)
+                                           }, y_batch)
     #         print(loss.history)
     #         print(rnn.metrics_names)
     #         print(loss_rnn)
             if TASK == 'r':
-                print("Epoch %d/%d : Batch %d/%d | %s = %f | root_%s = %f" %
+                print("Epoch %d/%d : Batch %d/%d | %s = %.4f | root_%s = %.4f" %
                       (epoch, NUM_EPOCH, batch_index, num_batch, 
                        rnn.metrics_names[0], loss_rnn[0], rnn.metrics_names[1], np.sqrt(loss_rnn[1])))
             elif TASK == 'c':
-                print("Epoch %d/%d : Batch %d/%d | %s = %f | %s = %f | %s = %f" %
+                print("Epoch %d/%d : Batch %d/%d | %s = %.4f | %s = %.4f | %s = %.4f" %
                       (epoch, NUM_EPOCH, batch_index, num_batch, 
                        rnn.metrics_names[0], loss_rnn[0], rnn.metrics_names[1], loss_rnn[1], rnn.metrics_names[2], loss_rnn[2]))
         
@@ -211,10 +309,14 @@ if __name__ == "__main__":
             globalAvg_val_err = regression_metric_batch()
             lr_val_err = regression_metric_batch()
             rnn_val_err = regression_metric_batch()
-        if TASK == 'c':
+        elif TASK == 'c':
             globalAvg_val_err = classification_metric_batch()
             lr_val_err = classification_metric_batch()
             rnn_val_err = classification_metric_batch()
+        
+        
+#         X_val = pickle.load(open('X_val.p', 'rb'))
+#         y_val = pickle.load(open('y_val.p', 'rb'))
         
         for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_val, mig.y_val, batch_size=BATCH_SIZE):
             globalAvg_val_err.update( y_batch, globalAverage.predict(BATCH_SIZE) )
@@ -223,7 +325,10 @@ if __name__ == "__main__":
                                                                 'ctx_input':X_batch_ctx,
                                                                 'user_input': X_batch_u,
                                                                 'page_input': X_batch_p}) )
-            
+#         del X_val
+#         del y_val
+        
+        
         val_error_history.append((globalAvg_val_err.result(), 
                                    lr_val_err.result(), 
                                    rnn_val_err.result()))
@@ -240,6 +345,38 @@ if __name__ == "__main__":
         print("===========================================================================")
         print()
         
+        
+        
+        
+        
+        ''' Check if the validation error of this epoch is the lowest so far '''
+        if lr_val_err.result() == min(lr_val for _, lr_val, _ in val_error_history):
+            lr.save('lr.h5')
+            best_epoch_lr = epoch
+            print("A LR model has been saved.")
+            
+        
+        ''' Check if the validation error of this epoch is the lowest so far '''
+        if rnn_val_err.result() == min(rnn_val for _, _, rnn_val in val_error_history):
+            rnn.save('rnn.h5')
+            best_epoch_rnn = epoch
+            print("An RNN model has been saved.")
+            
+            ''' TRAIN POST-FILTER '''
+            if TASK == 'c':
+                post_filter.train_filter(rnn_val_err.y_pred, rnn_val_err.y_true, rnn_val_err.LogLoss())
+            elif TASK == 'r':
+                post_filter.train_filter(rnn_val_err.y_pred, rnn_val_err.y_true, rnn_val_err.RMSD())
+                
+        print()
+                
+        print("The best performance of RNN so far is", min(rnn_val for _, _, rnn_val in val_error_history))
+        print()
+        print()
+        
+        
+        
+        
         epoch = 0
         print("The Performance of All Epochs So Far:")
         for train_error_rnn, val_error_all in zip(train_error_history, val_error_history):
@@ -252,70 +389,71 @@ if __name__ == "__main__":
             print("The validation error of RNN =", val_error_all[2])
             print()
         
-        
-        
-        ''' Check if the validation error of this epoch is the lowest so far '''
-        if lr_val_err.result() == min(lr_val for _, lr_val, _ in val_error_history):
-            lr.save('lr.h5')
-            best_epoch_lr = epoch
-            print("A LR model has been saved.")
-        
-        ''' Check if the validation error of this epoch is the lowest so far '''
-        if rnn_val_err.result() == min(rnn_val for _, _, rnn_val in val_error_history):
-            rnn.save('rnn.h5')
-            best_epoch_rnn = epoch
-            print("An RNN model has been saved.")
-        print()
-                
-        print("The best performance of RNN so far is", min(rnn_val for _, _, rnn_val in val_error_history))
-        print()
-        print()
-        
-        
-    # Just print out
-#    print("GlobalAverage:")
-#    print(globalAverage.predict(1)[0])
-#    print()
-    
-        
-    # epoch = 0
-    # for train_error_rnn, val_error_all in zip(train_error_history, val_error_history):
-    #     epoch += 1
-    #     print("============ Epoch %d =============" % epoch)
-    #     print("The training error of RNN = %f" % train_error_rnn)
-    #     print()
-    #     print("The validation error of GlobalAverage = %f" % val_error_all[0])
-    #     print("The validation error of Linear Regression = %f" % val_error_all[1])
-    #     print("The validation error of RNN = %f" % val_error_all[2])
-    #     print()
-    
     
     print("LR got the best performance at Epoch", best_epoch_lr)
     print("RNN got the best performance at Epoch", best_epoch_rnn)
     
-    """    
+        
+        
+        
+        
+        
     rnn_best = load_model('rnn.h5')
-    # lr_best = load_model('lr.h5')   
+    lr_best = load_model('lr.h5')   
     
     '''
     Load the RNN and LR have the lowest validation error
     Predict and calculate the test error of this epoch
     '''
-    globalAvg_test_err = RMSD_batch()
-    rmsd_lr_test = RMSD_batch()
-    rmsd_rnn_test = RMSD_batch()
+    
+    if TASK == 'r':
+        globalAvg_test_err = regression_metric_batch()
+        lr_test_err = regression_metric_batch()
+        rnn_test_err = regression_metric_batch()
+    elif TASK == 'c':
+        globalAvg_test_err = classification_metric_batch()
+        lr_test_err = classification_metric_batch()
+        rnn_test_err = classification_metric_batch()
+    
+    
+#     X_test = pickle.load(open('X_test.p', 'rb'))
+#     y_test = pickle.load(open('y_test.p', 'rb'))
+        
+
     for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_test, mig.y_test, batch_size=BATCH_SIZE):
-        rmsd_globalAvg_test.update( y_batch, globalAverage.predict(BATCH_SIZE) )
-    #     rmsd_lr_test.update(y_batch, lr_best.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
-        rmsd_rnn_test.update( y_batch, rnn_best.predict_on_batch({'dep_input': X_batch_dep, 
+        globalAvg_test_err.update( y_batch, globalAverage.predict(BATCH_SIZE) )
+        lr_test_err.update(y_batch, lr_best.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
+        rnn_test_err.update( y_batch, rnn_best.predict_on_batch({'dep_input': X_batch_dep, 
                                                                   'ctx_input': X_batch_ctx,
                                                                   'user_input': X_batch_u,
                                                                   'page_input': X_batch_p}) )
+#     del X_test
+#     del y_test
+    
     
     print()
     print("================= Performance on the Test Set =======================")
-    print("GlobalAverage: RMSD = %f" % (rmsd_globalAvg_test.final_RMSD()))
-    # print("Linear Regression (Epoch=%d): RMSD = %f" % (best_epoch_lr, rmsd_lr_test.final_RMSD()))
-    print("RNN (Epoch=%d): RMSD = %f" % (best_epoch_rnn, rmsd_rnn_test.final_RMSD()))
+    print("The validation error of GlobalAverage =", globalAvg_test_err.result())
+    print("The validation error of LR =", lr_test_err.result())
+    print("The validation error of RNN =", rnn_test_err.result())
     print("=====================================================================")
-    """
+    
+    ''' APPLY SAVED POST-FILTERING '''
+    if TASK == 'c':
+#         print(rnn_test_err.y_pred)
+#         print(rnn_test_err.y_true)
+        post_filter.predict_filter(rnn_test_err.y_pred, rnn_test_err.y_true, rnn_test_err.LogLoss())
+    elif TASK == 'r':
+        post_filter.predict_filter(rnn_test_err.y_pred, rnn_test_err.y_true, rnn_test_err.RMSD())
+    
+    
+    
+    
+    ''' Measure runtime '''
+    print()
+    runtime = time.time() - start_time
+    print("--- TOTAL RUNTIME: %d hours %d minutes %d seconds ---" % (runtime // 3600 % 60, runtime // 60 % 60, runtime % 60))
+    print("--- AVERAGE RUNTIME: %d hours %d minutes %d seconds ---" % (runtime // NUM_EPOCH // 3600 % 60, 
+                                                      runtime // NUM_EPOCH // 60 % 60, 
+                                                      runtime // NUM_EPOCH % 60))
+    

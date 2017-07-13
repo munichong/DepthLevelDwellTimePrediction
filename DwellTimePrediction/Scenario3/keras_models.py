@@ -4,14 +4,12 @@ Created on Aug 25, 2016
 @author: munichong
 '''
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Activation
+from keras.layers import Dense, Dropout, Activation, Input, Embedding, merge
 from keras.optimizers import SGD, RMSprop, Adam
-from keras.layers import Input, Embedding, merge
 from keras.layers.recurrent import LSTM, GRU, SimpleRNN
 from keras.layers.wrappers import TimeDistributed, Bidirectional
 from keras.layers.normalization import BatchNormalization
 from keras.layers.advanced_activations import LeakyReLU
-from keras.engine.topology import Merge
 from keras.models import Model
 from keras.regularizers import l2, l1
 # from keras.utils.visualize_util import plot
@@ -204,7 +202,9 @@ def RNN_upc_embed_r(ctx_feat_num, user_num, page_num, timestep_num=100):
                         user_page_depth_merge, 
                         context_input], mode='concat')
 #     merged_model = Dropout(0.2)(merged_model)
+    
     '''
+    
     merged_model = LSTM(output_dim=500, activation='tanh',
                           return_sequences=True, consume_less='gpu',
 #                           init='normal',
@@ -221,8 +221,8 @@ def RNN_upc_embed_r(ctx_feat_num, user_num, page_num, timestep_num=100):
                           )(merged_model)
 #     merged_model = LeakyReLU(alpha=.01)(merged_model)
     merged_model = Dropout(0.2)(merged_model)
-    '''
     
+    '''
          
     merged_model = Bidirectional(LSTM(output_dim=500, activation='tanh',
                           return_sequences=True, consume_less='gpu',
@@ -291,7 +291,6 @@ def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
                             )(depth_input)
 #    depth_embed = Dropout(0.2)(depth_embed)  
     
-        
     context_input = Input(shape=(timestep_num, ctx_feat_num), name='ctx_input')
     
     
@@ -304,41 +303,57 @@ def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
     user_page_depth_merge = merge([user_embed, page_embed, depth_embed], mode='mul', dot_axes=2)
     user_page_depth_merge = Dropout(0.2)(user_page_depth_merge)
     
-
+    
        
-    merged_model = merge([user_embed, page_embed, depth_embed,
-                        user_page_merge, user_depth_merge, page_depth_merge, 
+    merged_model = merge([user_embed, page_embed, 
+                        depth_embed,
+                          user_page_merge,
+                        user_depth_merge, page_depth_merge, 
                         user_page_depth_merge, 
                         context_input], mode='concat')
 #     merged_model = Dropout(0.2)(merged_model)
     
-    merged_model = LSTM(output_dim=500, activation='tanh',
-                          return_sequences=True, consume_less='gpu',
-#                           init='normal',
-#                           W_regularizer=l2(0.0001)
-                          )(merged_model)
-#     merged_model = LeakyReLU(alpha=.01)(merged_model)
-    merged_model = Dropout(0.2)(merged_model)
     
-         
-    merged_model = LSTM(output_dim=500, activation='tanh',
-                          return_sequences=True, consume_less='gpu',
-#                           init='normal',
-#                           W_regularizer=l2(0.0001)
-                          )(merged_model)
-#     merged_model = LeakyReLU(alpha=.01)(merged_model)
-    merged_model = Dropout(0.2)(merged_model)
+#     merged_model = TimeDistributed(Dense(output_dim=500, activation='tanh'))(merged_model)
+#     merged_model = Dropout(0.2)(merged_model)
+#     merged_model = TimeDistributed(Dense(output_dim=300, activation='tanh'))(merged_model)
+#     merged_model = Dropout(0.2)(merged_model)
+#     
+#     
+#     depth_part = Bidirectional(LSTM(output_dim=300, activation='tanh',
+#                           return_sequences=True, consume_less='gpu',
+# #                           init='normal',
+# #                           W_regularizer=l2(0.0001)
+#                           ), merge_mode='ave')(depth_embed)
+# #     merged_model = LeakyReLU(alpha=.01)(merged_model)
+#     depth_part = Dropout(0.2)(depth_part)
+#     
+#     
+# #     merged_model = merge([merged_model, depth_part], mode='concat')
+#     merged_model = merge([merged_model, depth_part], mode='mul', dot_axes=2)
+    
+    
     '''
     
-    merged_model = Bidirectional(LSTM(output_dim=500, activation='tanh',
+    merged_model = LSTM(output_dim=500, activation='tanh',
                           return_sequences=True, consume_less='gpu',
 #                           init='normal',
 #                           W_regularizer=l2(0.0001)
-                          ), merge_mode='ave')(merged_model)
+                          )(merged_model)
 #     merged_model = LeakyReLU(alpha=.01)(merged_model)
     merged_model = Dropout(0.2)(merged_model)
     
          
+    merged_model = LSTM(output_dim=500, activation='tanh',
+                          return_sequences=True, consume_less='gpu',
+#                           init='normal',
+#                           W_regularizer=l2(0.0001)
+                          )(merged_model)
+#     merged_model = LeakyReLU(alpha=.01)(merged_model)
+    merged_model = Dropout(0.2)(merged_model)
+    
+    '''
+    
     merged_model = Bidirectional(LSTM(output_dim=500, activation='tanh',
                           return_sequences=True, consume_less='gpu',
 #                           init='normal',
@@ -354,12 +369,18 @@ def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
                           ), merge_mode='ave')(merged_model)
 #     merged_model = LeakyReLU(alpha=.01)(merged_model)
     merged_model = Dropout(0.2)(merged_model)
-    '''
+    
+    
+    
+#     merged_model = merge([merged_model, user_page_merge, user_depth_merge, page_depth_merge], mode='concat')
+    
     
     
     merged_model = TimeDistributed(Dense(output_dim=1, activation='sigmoid'))(merged_model)
     
     model = Model(input=[user_input, page_input, depth_input, context_input], output=[merged_model])
+    
+    
     
     # "we are using the logarithmic loss function (binary_crossentropy) during training
     # the preferred loss function for binary classification problems."

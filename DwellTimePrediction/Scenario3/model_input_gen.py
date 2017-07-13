@@ -1,6 +1,5 @@
 '''
 Created on Aug 25, 2016
-
 @author: munichong
 '''
 import random, numpy as np
@@ -37,6 +36,9 @@ def add_vector_features(feat_dict, name_head, vector):
     for i in range(len(vector)):
         feat_dict[ ''.join([name_head, str(i)]) ] = vector[i]
 
+def hashstr(s):
+    return hash(s)
+#     return int(hashlib.md5(s.encode('utf8')).hexdigest(), 16)%(1e+6-1)+1
 
 
 
@@ -47,6 +49,9 @@ class X_instance():
         self.page = p
         self.depth = dep
         self.context = cntxt # dict
+        
+    def gen_more_feats(self):
+        return self.context
     
     def dense_depth(self):
         dense_vec = [0] * 100
@@ -81,8 +86,6 @@ def input_vector_builder(pageviews):
                     image, writtenByForbesStaff, commentCount) in enumerate(pv.depth_level_rows):            
             
             
-            feature_dict = defaultdict(int)
-            
             '''
             Depth, User, Page indices all start from 1, not 0 !!!
             '''
@@ -94,6 +97,8 @@ def input_vector_builder(pageviews):
             if clean_url not in page2index:
                 page2index[clean_url] = len(page2index) + 1
             
+            
+            features = []
             
             '''
             Add Doc2Vec vector of this page
@@ -107,66 +112,68 @@ def input_vector_builder(pageviews):
 #                 no_d2v_dep_num += 1
 #                 continue
             
+                      
             
-
+            if geo in tts.geo_convert2OTHER:
+                features.append(hashstr('='.join(['geo', 'other'])))
+            else:
+                features.append(hashstr('='.join(['geo', geo])))
             
+            features.append(hashstr('='.join(['length', length])))
+            
+#             features.append(hashstr('='.join(['channel', channel])))
+#             features.append(hashstr('='.join(['section', section])))
+            
+            for cha in channel_group:
+                features.append(hashstr('='.join(['channel', cha])))
+            for sec in section_group:
+                features.append(hashstr('='.join(['section', sec])))
+            
+            features.append(hashstr('='.join(['fresh', fresh])))
+            features.append(hashstr('='.join(['page_type', page_type])))
+            features.append(hashstr('='.join(['tempType', templateType])))
+            features.append(hashstr('='.join(['blogType', blogType])))
+            features.append(hashstr('='.join(['storyType', storyType])))
+            features.append(hashstr('='.join(['image', image])))
+            features.append(hashstr('='.join(['forbesStaff', writtenByForbesStaff])))
+            features.append(hashstr('='.join(['commentCount', commentCount])))
+            
+            
+            if device in tts.device_convert2OTHER:
+                features.append(hashstr('='.join(['device', device])))
+            else:
+                features.append(hashstr('='.join(['device', 'OTHER'])))
+            if os in tts.os_convert2OTHER:
+                features.append(hashstr('='.join(['os', 'other'])))
+            else:
+                features.append(hashstr('='.join(['os', os])))
+            if browser in tts.browser_convert2OTHER:
+                features.append(hashstr('='.join(['browser', 'other'])))
+            else:
+                features.append(hashstr('='.join(['browser', browser])))
+            
+            
+            features.append(hashstr('='.join(['weekday', weekday])))
+            features.append(hashstr('='.join(['hour', hour])))
             
             vp_wid, vp_hei = discretize_pixel_area(viewport)
             
-            feature_dict['='.join(['vp_wid', vp_wid])] = 1
-            feature_dict['='.join(['vp_hei', vp_hei])] = 1
+            features.append(hashstr('='.join(['vp_wid', vp_wid])))
+            features.append(hashstr('='.join(['vp_hei', vp_hei])))
             
             vp_wid_counter.update([vp_wid])
             vp_hei_counter.update([vp_hei])
             
             
-            if geo in tts.geo_convert2OTHER:
-                feature_dict['='.join(['geo', 'other'])] = 1
-            else:
-                feature_dict['='.join(['geo', geo])] = 1
+            features = tuple(features)
             
-
-            feature_dict['='.join(['weekday', weekday])] = 1
-            feature_dict['='.join(['hour', hour])] = 1
-            feature_dict['='.join(['length', length])] = 1
-#             feature_dict['='.join(['channel', channel])] = 1
-#             feature_dict['='.join(['section', section])] = 1
-            
-            for cha in channel_group:
-                feature_dict['='.join(['channel', cha])] = 1
-            for sec in section_group:
-                feature_dict['='.join(['section', sec])] = 1
-            
-            feature_dict['='.join(['fresh', fresh])] = 1
-            feature_dict['='.join(['page_type', page_type])] = 1
-            feature_dict['='.join(['tempType', templateType])] = 1
-            feature_dict['='.join(['blogType', blogType])] = 1
-            feature_dict['='.join(['storyType', storyType])] = 1
-            feature_dict['='.join(['image', image])] = 1
-            feature_dict['='.join(['forbesStaff', writtenByForbesStaff])] = 1
-            feature_dict['='.join(['commentCount', commentCount])] = 1
-            
-            
-            if device in tts.device_convert2OTHER:
-                feature_dict['='.join(['device', device])] = 1
-            else:
-                feature_dict['='.join(['device', 'OTHER'])] = 1
-            if os in tts.os_convert2OTHER:
-                feature_dict['='.join(['os', 'other'])] = 1
-            else:
-                feature_dict['='.join(['os', os])] = 1
-            if browser in tts.browser_convert2OTHER:
-                feature_dict['='.join(['browser', 'other'])] = 1
-            else:
-                feature_dict['='.join(['browser', browser])] = 1
-            
-            x_inst = X_instance(feature_dict, depth, uid, clean_url)
+            x_inst = X_instance(features, depth, uid, clean_url)
             
             
             pv_X.append(x_inst)
 #             pv_y.append(float(dwell))
             pv_y.append([float(dwell)]) # required for 'many to many'; Example: http://stackoverflow.com/questions/38294046/simple-recurrent-neural-network-with-keras
-            unique_feature_names.update(feature_dict.keys())
+            unique_feature_names.update(features)
         
         if pv_X: # if the body is not valid, pv_X will be [] (if "continue")
             X.append(pv_X)
@@ -177,11 +184,17 @@ def input_vector_builder(pageviews):
     
     return X, y
 
-print("Building training input vectors ...")
+
+
+print("Building training vectors ...")
 X_train, y_train = input_vector_builder(tts.training_set) 
-del tts.training_set 
+del tts.training_set
+
+print("Building validation vectors ...")
 X_val, y_val = input_vector_builder(tts.validate_set)  
 del tts.validate_set
+
+print("Building test vectors ...")
 X_test, y_test = input_vector_builder(tts.test_set) 
 del tts.test_set 
 # print(np.array(y_train).shape)
@@ -224,15 +237,35 @@ del tts.browser_convert2OTHER
 # del tts.all_training_text
 
 
-vectorizer = DictVectorizer(dtype=np.float32) 
+# vectorizer = DictVectorizer(dtype=np.float32) 
+
+class Vectorizer:
+    def __init__(self, feature_names):
+        self.feat_dict = {feature : index for index, feature in enumerate(feature_names)}
+        
+    def transform(self, X_batch): # X_batch is a list of depth in one single page view, len(X_batch) = 100
+        X = []
+        for x in X_batch:
+            vec = [0] * len(self.feat_dict)
+#             for f, v in x.gen_more_feats():
+#                 vec[self.feat_dict[f]] = v
+            for f in x.gen_more_feats():
+                vec[self.feat_dict[f]] = 1
+            
+            X.append(vec)
+        return np.array(X, dtype='float32')
+
+vectorizer = Vectorizer(unique_feature_names) 
+
+del unique_feature_names
 
 # print(None in unique_feature_names)
 # print('' in unique_feature_names)
 # print('none' in unique_feature_names)
 
-print("Fitting feature names")
-vectorizer.fit([{feat_name:1 for feat_name in unique_feature_names}]) # dummy input
-print("The length of each vector will be", len(vectorizer.feature_names_))
+# print("Fitting feature names")
+# vectorizer.fit([{feat_name:1 for feat_name in unique_feature_names}]) # dummy input
+# print("The length of each vector will be", len(vectorizer.feature_names_))
 
 
 def Xy_gen(X, y, batch_size=10):
@@ -244,10 +277,11 @@ def Xy_gen(X, y, batch_size=10):
 #     print(len(y))
     for Xinst_pv, y_pv in random.sample(list(zip(X, y)), len(y)): # shuffle pageviews
         # Xinst_pv is about one pageview which has 100 X_instance
-        X_batch_ctx.append( vectorizer.transform(
-                                                    (x.context for x in Xinst_pv)
-                                                      ).toarray()
-                            )
+#         X_batch_ctx.append( vectorizer.transform(
+#                                                     (x.context for x in Xinst_pv)
+#                                                       ).toarray()
+#                             )
+        X_batch_ctx.append( vectorizer.transform(Xinst_pv) )
         user_index = user2index[Xinst_pv[0].user]
         page_index = page2index[Xinst_pv[0].page]
         X_batch_u.append(np.array([user_index] * 100))
@@ -280,4 +314,5 @@ def Xy_gen(X, y, batch_size=10):
         X_batch_u.clear()
         X_batch_p.clear()
         y_batch.clear()
- 
+        
+        

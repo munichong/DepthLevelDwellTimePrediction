@@ -142,7 +142,7 @@ def write_new_featval_multi(indice, vals, key, lookup, output):
 def discretize_pixel_area(pixels):
     if pixels == 'unknown':
         return pixels
-    return 'x'.join([str(int(p)/100) for p in pixels.split('x')])
+    return 'x'.join([str(int(p)//100) for p in pixels.split('x')])
 
 def get_area_text(top, bottom, fulltext):
     length = len(fulltext.split())
@@ -227,7 +227,9 @@ for training_pv in ttg.training_set:
         
         ''' transform features if necessary '''
         screen = discretize_pixel_area(screen)
+#         print("BEFORE:", viewport)
         viewport = discretize_pixel_area(viewport) 
+#         print("AFTER:", viewport)
         screen_height = screen.split('x')[0] if screen != 'unknown' else 'unknown'
         screen_width = screen.split('x')[1] if screen != 'unknown' else 'unknown'
         viewport_height = viewport.split('x')[0] if viewport != 'unknown' else 'unknown'
@@ -354,27 +356,36 @@ for training_pv in ttg.training_set:
 
 
         ''' dwell time prediction '''
-        y_train_output.write(str(dwell) + '\n')
-        ''' For baselines '''
-        dwell_depth_dict[depth].append(dwell)
-        dwell_user_depth_dict[uid][depth].append(dwell)
-        dwell_page_depth_dict[url][depth].append(dwell)
-    
+#         y_train_output.write(str(dwell) + '\n')
+#         ''' For baselines '''
+#         dwell_depth_list[depth].append(dwell) 
+        
+#         if depth in dwell_user_depth_list[uid]:
+#             dwell_user_depth_list[uid][depth].append(dwell)
+#         else:
+#             dwell_user_depth_list[uid][depth] = [dwell]
+#             
+#         if depth in dwell_page_depth_list[url]:
+#             dwell_page_depth_list[url][depth].append(dwell)
+#         else:
+#             dwell_page_depth_list[url][depth] = [dwell]
     
         ''' viewability prediction '''  
-#         if dwell >= 10:
-#             y_train_output.write('1\n')
-#             ''' For baselines '''
-#             dwell_depth_dict[depth].append(1) 
-#             dwell_user_depth_dict[uid][depth].append(1)
-#             dwell_page_depth_dict[url][depth].append(1)
-#              
-#         else:
-#             y_train_output.write('0\n')
-#             ''' For baselines '''
-#             dwell_depth_dict[depth].append(0) 
-#             dwell_user_depth_dict[uid][depth].append(0)
-#             dwell_page_depth_dict[url][depth].append(0)
+        if dwell >= 10:
+            y_train_output.write('1\n')
+            
+            ''' For baselines '''
+            dwell_depth_dict[depth].append(1) 
+            dwell_user_depth_dict[uid][depth].append(1)
+            dwell_page_depth_dict[url][depth].append(1)
+            
+        else:
+            y_train_output.write('0\n')
+            
+            ''' For baselines '''
+            dwell_depth_dict[depth].append(0) 
+            dwell_user_depth_dict[uid][depth].append(0)
+            dwell_page_depth_dict[url][depth].append(0)
             
 
 
@@ -561,19 +572,17 @@ for test_pv in ttg.test_set:
 #             d2v150_test_output.write(str(d2v150_index_lookup[d2v_key_150]) + '\n')
 #             d2v200_test_output.write(str(d2v200_index_lookup[d2v_key_200]) + '\n')
     
-    
         ''' dwell time prediction  '''
-        y_test_output.write(str(dwell) + '\n')
-        y_true.append( dwell ) 
-        
+#         y_test_output.write(str(dwell) + '\n')
+#         y_true.append( dwell ) 
         
         ''' viewability prediction '''  
-#         if dwell >= 10:
-#             y_test_output.write('1\n')
-#             y_true.append( 1 ) 
-#         else:
-#             y_test_output.write('0\n')
-#             y_true.append( 0 ) 
+        if dwell >= 10:
+            y_test_output.write('1\n')
+            y_true.append( 1 ) 
+        else:
+            y_test_output.write('0\n')
+            y_true.append( 0 ) 
         
     
         y_pred_globalMEAN.append( dwell_globaldepth_mean[depth] )
@@ -588,17 +597,17 @@ for test_pv in ttg.test_set:
 
 print("Finish outputting\n")
 
-print('RMSD_gloablMEAN =', sqrt(mean_squared_error(y_true, y_pred_globalMEAN)))
-print('RMSD_gloablMEDIAN =', sqrt(mean_squared_error(y_true, y_pred_globalMEDIAN)))
-print('RMSD_userMEAN =', sqrt(mean_squared_error(y_true, y_pred_userMEAN)))
-print('RMSD_userMEDIAN =', sqrt(mean_squared_error(y_true, y_pred_userMEDIAN)))
-print('RMSD_pageMEAN =', sqrt(mean_squared_error(y_true, y_pred_pageMEAN)))
-print('RMSD_pageMEDIAN =', sqrt(mean_squared_error(y_true, y_pred_pageMEDIAN)))
+# print('RMSD_gloablMEAN =', sqrt(mean_squared_error(y_true, y_pred_globalMEAN)))
+# print('RMSD_gloablMEDIAN =', sqrt(mean_squared_error(y_true, y_pred_globalMEDIAN)))
+# print('RMSD_userMEAN =', sqrt(mean_squared_error(y_true, y_pred_userMEAN)))
+# print('RMSD_userMEDIAN =', sqrt(mean_squared_error(y_true, y_pred_userMEDIAN)))
+# print('RMSD_pageMEAN =', sqrt(mean_squared_error(y_true, y_pred_pageMEAN)))
+# print('RMSD_pageMEDIAN =', sqrt(mean_squared_error(y_true, y_pred_pageMEDIAN)))
 
 # print(y_pred_globalMEAN)
 # print(y_pred_userMEAN)
 # print(y_pred_pageMEAN)
-
+# 
 # print('LogLoss_gloablMEAN =', logloss(y_true, y_pred_globalMEAN))
 # print('LogLoss_userMEAN =', logloss(y_true, y_pred_userMEAN))
 # print('LogLoss_pageMEAN =', logloss(y_true, y_pred_pageMEAN))

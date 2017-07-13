@@ -18,11 +18,11 @@ def logloss(act, pred):
 
 
 y_pred = []
-for line in open('/home/munichong/Desktop/libfm-1.42.src/prediction_10s.txt', 'r'):
+for line in open('I:/Desktop/output_ffm_3s', 'r'):
     y_pred.append(float(line.strip()))
 
 y_test = []
-for line in open('/home/munichong/Desktop/libfm-1.42.src/data_bs/y.test', 'r'):
+for line in open('I:/Desktop/ground_truth_3s.csv', 'r'):
     y_test.append(float(line.strip()))
     
 # print('RMSD_libfm =', sqrt(mean_squared_error(y_test, y_pred)))

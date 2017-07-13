@@ -32,6 +32,7 @@ def get_depth_dwell_time(loglist):
                 break
             screen_top = additionalinfo['Percentage reading from']
             screen_bottom = additionalinfo['Percentage of reading']
+    
             dwell_time = additionalinfo['Time on article']
             
 #             if dwell_time > page_dwell_time_threshold or dwell_time < 0:
@@ -113,7 +114,10 @@ def get_depth_dwell_stats(pv_summary):
     for screen_top, screen_bottom, dwell_time in pv_summary:
         mean_area_size.append(screen_bottom - screen_top)
         for depth in range(screen_top, screen_bottom + 1):
-            depth_dwell_stats[depth] = (dwell_time, screen_top, screen_bottom)
+            if depth in depth_dwell_stats:
+                depth_dwell_stats[depth] = (depth_dwell_stats[depth][0]+dwell_time, min(depth_dwell_stats[depth][1], screen_top), max(depth_dwell_stats[depth][2], screen_bottom))
+            else:
+                depth_dwell_stats[depth] = (dwell_time, screen_top, screen_bottom)
     mean_area_size = sum(mean_area_size) / len(mean_area_size)
             
     ''' fill the screens which were not scrolled '''

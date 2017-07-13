@@ -8,7 +8,7 @@ from numpy import mean
 from collections import defaultdict
 from math import log
 from collections import Counter
-from models_training import TASK, VIEWABILITY_THRESHOLD
+# from models_training import TASK, VIEWABILITY_THRESHOLD
 
 
 # page_dwell_time_threshold = 120
@@ -24,7 +24,7 @@ def is_valid_screen_dwell(dwell):
 viewport_dwell_counter = Counter()
 seq_len_counter = Counter()
 
-def viewport_behaviors(loglist):
+def viewport_behaviors(loglist, task, viewability_threshold):
 #     print(loglist)
     pv_summary = [] # [[screen_top, screen_bottom, dwell_time], [ ... ]]
     skip_pageview = False
@@ -101,7 +101,7 @@ def viewport_behaviors(loglist):
         
     viewport_dwell_counter.update( [s[2] for s in pv_summary] )
     
-    depth_dwell_stats = get_depth_dwell_stats(pv_summary)
+    depth_dwell_stats = get_depth_dwell_stats(pv_summary, task, viewability_threshold)
     
     
 #     if np.count_nonzero(depth_dwell_stats) < 99:
@@ -129,7 +129,7 @@ def print_viewport_dwell_dist():
     del viewport_dwell_counter
 
 
-def get_depth_dwell_stats(pv_summary):    
+def get_depth_dwell_stats(pv_summary, task, viewability_threshold):    
 #     segment_boudaries = sorted(list(set([top for top, _, _ in pv_summary] + 
 #                                         [bottom for _, bottom, _ in pv_summary])))
     
@@ -143,12 +143,12 @@ def get_depth_dwell_stats(pv_summary):
 #             if depth >= top and (depth == 100 or depth < bottom):
                 accumu_dwell += dwell
         
-        if TASK == 'c':
-            if accumu_dwell >= VIEWABILITY_THRESHOLD:
+        if task == 'c':
+            if accumu_dwell >= viewability_threshold:
                 accumu_dwell = 1
             else:
                 accumu_dwell = 0
-        elif TASK == 'r':
+        elif task == 'r':
             accumu_dwell = accumu_dwell   
         
         depth_dwell_stats[depth] = accumu_dwell

@@ -410,12 +410,12 @@ print()
 
 
 """ Calculate TF-IDF over all pages (over both training and test pages) """
-print("Calculating TF-IDF for", len(all_training_text) + len(all_test_text), "pages")
-tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=1, max_features=500,
-                                   token_pattern=r'(?u)\b[a-zA-Z]+\b')
-tfidf_vectorizer.fit(list(all_training_text.values()) + list(all_test_text.values()))
-
-print("Finish Training_test_generator module")
+# print("Calculating TF-IDF for", len(all_training_text) + len(all_test_text), "pages")
+# tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=1, max_features=500,
+#                                    token_pattern=r'(?u)\b[a-zA-Z]+\b')
+# tfidf_vectorizer.fit(all_training_text.values() + all_test_text.values())
+# 
+# print("Finish Training_test_generator module")
 
 
 
