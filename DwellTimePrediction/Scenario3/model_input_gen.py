@@ -48,7 +48,10 @@ class X_instance():
         self.user = u
         self.page = p
         self.depth = dep
-        self.context = cntxt # dict
+        self.context = cntxt # np.array
+#         print('=====================')
+#         print(cntxt)
+#         print('=====================')
         
     def gen_more_feats(self):
         return self.context
@@ -114,76 +117,61 @@ def input_vector_builder(pageviews):
 #                 continue
             
                       
-            ''' User Features '''
+            ''' USER FEATURES '''
             hashed_geo = hashstr('='.join(['geo', 'other'])) if geo in tts.geo_convert2OTHER else hashstr('='.join(['geo', geo]))
             
-            USER_FEATURES = (hashed_geo, )
+            USER_FEATURES = ((hashed_geo, 1), )
             
             
             
-            ''' Page Features '''
+            ''' PAGE FEATURES '''
 #             features.append(hashstr('='.join(['channel', channel])))
 #             features.append(hashstr('='.join(['section', section])))
             
-            hashed_cha_group = tuple(hashstr('='.join(['channel', cha])) for cha in channel_group)
-            hashed_sec_group = tuple(hashstr('='.join(['section', sec])) for sec in section_group)
+            hashed_cha_group = tuple((hashstr('='.join(['channel', cha])), 1) for cha in channel_group)
+            hashed_sec_group = tuple((hashstr('='.join(['section', sec])), 1) for sec in section_group)
             
-            hashed_page_meta = (hashstr('='.join(['length', length])),
-                                hashstr('='.join(['fresh', fresh])), 
-                                hashstr('='.join(['page_type', page_type])),
-                                hashstr('='.join(['tempType', templateType])), 
-                                hashstr('='.join(['blogType', blogType])),
-                                hashstr('='.join(['storyType', storyType])), 
-                                hashstr('='.join(['image', image])),
-                                hashstr('='.join(['forbesStaff', writtenByForbesStaff])),
-                                hashstr('='.join(['commentCount', commentCount]))
+            hashed_page_meta = ((hashstr('='.join(['length', length])), 1),
+                                (hashstr('='.join(['fresh', fresh])), 1), 
+                                (hashstr('='.join(['page_type', page_type])), 1),
+                                (hashstr('='.join(['tempType', templateType])), 1), 
+                                (hashstr('='.join(['blogType', blogType])), 1),
+                                (hashstr('='.join(['storyType', storyType])), 1), 
+                                (hashstr('='.join(['image', image])), 1),
+                                (hashstr('='.join(['forbesStaff', writtenByForbesStaff])), 1),
+                                (hashstr('='.join(['commentCount', commentCount])), 1)
                                 )
             
             PAGE_FEATURES = hashed_cha_group + hashed_sec_group + hashed_page_meta
 
             
-            ''' Context Features '''
+            ''' CONTEXT FEATURES '''
             hashed_device = hashstr('='.join(['device', 'OTHER'])) if device in tts.device_convert2OTHER else hashstr('='.join(['device', device]))
-            
-#             if device in tts.device_convert2OTHER:
-#                 hashed_device = hashstr('='.join(['device', device]))
-#             else:
-#                 hashed_device = hashstr('='.join(['device', 'OTHER']))
             
             hashed_os = hashstr('='.join(['os', 'OTHER'])) if os in tts.os_convert2OTHER else hashstr('='.join(['os', os]))
             
-#             if os in tts.os_convert2OTHER:
-#                 hashed_os = hashstr('='.join(['os', 'other']))
-#             else:
-#                 hashed_os = hashstr('='.join(['os', os]))
-            
             hashed_browser = hashstr('='.join(['browser', 'OTHER'])) if browser in tts.browser_convert2OTHER else hashstr('='.join(['browser', browser]))
-                
-#             if browser in tts.browser_convert2OTHER:
-#                 hashed_browser = hashstr('='.join(['browser', 'other']))
-#             else:
-#                 features.append(hashstr('='.join(['browser', browser])))
             
             vp_wid, vp_hei = discretize_pixel_area(viewport)
             vp_wid_counter.update([vp_wid])
             vp_hei_counter.update([vp_hei])
             
-            CONTEXT_FEATURES = (hashed_device, hashed_os, hashed_browser, 
-                                hashstr('='.join(['weekday', weekday])),
-                                hashstr('='.join(['hour', hour])),
-                                hashstr('='.join(['vp_wid', vp_wid])),
-                                hashstr('='.join(['vp_hei', vp_hei]))
+            CONTEXT_FEATURES = ((hashed_device, 1), (hashed_os, 1), (hashed_browser, 1), 
+                                (hashstr('='.join(['weekday', weekday])), 1),
+                                (hashstr('='.join(['hour', hour])), 1),
+                                (hashstr('='.join(['vp_wid', vp_wid])), 1),
+                                (hashstr('='.join(['vp_hei', vp_hei])), 1)
                                 )
             
+            ALL_FEATURES = np.array(USER_FEATURES + PAGE_FEATURES + CONTEXT_FEATURES)
             
-            x_inst = X_instance(USER_FEATURES + PAGE_FEATURES + CONTEXT_FEATURES,
-                                depth, hashed_uid, hashed_url)
+            x_inst = X_instance(ALL_FEATURES, depth, hashed_uid, hashed_url)
             
             
             pv_X.append(x_inst)
 #             pv_y.append(float(dwell))
             pv_y.append([float(dwell)]) # required for 'many to many'; Example: http://stackoverflow.com/questions/38294046/simple-recurrent-neural-network-with-keras
-            unique_feature_names.update(USER_FEATURES + PAGE_FEATURES + CONTEXT_FEATURES)
+            unique_feature_names.update(f for f, _ in ALL_FEATURES)
         
         if pv_X: # if the body is not valid, pv_X will be [] (if "continue")
             X.append(pv_X)
@@ -253,14 +241,14 @@ class Vectorizer:
     def __init__(self, feature_names):
         self.feat_dict = {feature : index for index, feature in enumerate(feature_names)}
         
-    def transform(self, X_batch): # X_batch is a list of depth in one single page view, len(X_batch) = 100
+    def transform(self, X_batch): # X_batch contains 100 depths in one single page view, len(X_batch) = 100
         X = []
         for x in X_batch:
             vec = [0] * len(self.feat_dict)
 #             for f, v in x.gen_more_feats():
 #                 vec[self.feat_dict[f]] = v
-            for f in x.gen_more_feats():
-                vec[self.feat_dict[f]] = 1
+            for f, v in x.gen_more_feats():
+                vec[self.feat_dict[f]] = v
             
             X.append(vec)
         return np.array(X, dtype='float32')
@@ -284,13 +272,9 @@ def Xy_gen(X, y, batch_size=10):
     X_batch_ctx = []
     X_batch_dep = []
     y_batch = []
-#     print(len(y))
+
     for Xinst_pv, y_pv in random.sample(list(zip(X, y)), len(y)): # shuffle pageviews
-        # Xinst_pv is about one pageview which has 100 X_instance
-#         X_batch_ctx.append( vectorizer.transform(
-#                                                     (x.context for x in Xinst_pv)
-#                                                       ).toarray()
-#                             )
+        ''' Xinst_pv is about one pageview which has 100 X_instance '''
         X_batch_ctx.append( vectorizer.transform(Xinst_pv) )
         user_index = user2index[Xinst_pv[0].user]
         page_index = page2index[Xinst_pv[0].page]
