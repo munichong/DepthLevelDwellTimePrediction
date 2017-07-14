@@ -300,9 +300,7 @@ valid_pv_num = 0
 user_freq = defaultdict(int); page_freq = defaultdict(int);
 
 
-user_num = 0
-all_pageviews = []
-done = False
+
 depth_dwell_counter = Counter()
 geo_counter = Counter()
 channel_counter = Counter()
@@ -312,6 +310,11 @@ device_counter = Counter()
 os_counter = Counter()
 browser_counter = Counter()
 commentCount_counter = Counter()
+
+
+user_num = 0
+all_pageviews = []
+done = False
 while not done:
     try:
         freq_uids = get_freq_uids(COLD_START_THRESHOLD)
@@ -367,7 +370,7 @@ while not done:
 #                 print(article_info)
                 body_length, channel, section, channel_group, section_group, freshness, \
                 page_type, templateType, blogType, storyType, image, writtenByForbesStaff, calledOutCommentCount = article_info
-                
+                                
                 
                 device, os, browser = get_info_from_agent(pv_doc['ua'])
                 
