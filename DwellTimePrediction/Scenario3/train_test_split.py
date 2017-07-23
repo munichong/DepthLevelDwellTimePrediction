@@ -38,6 +38,12 @@ def get_freq_uids(threshold=0):
 def get_freq_urls(threshold=0):
     return page_freq_table.find({"freq": {"$gte":threshold}}, {'url':1})
 
+# freq_uids = get_freq_uids(COLD_START_THRESHOLD) # The uids of freq users
+# freq_urls = get_freq_urls(COLD_START_THRESHOLD) # The urls of freq pages
+# 
+# print(freq_uids.count(), "unique users")
+# print(freq_urls.count(), "unique urls")
+# print()
 
 
 freq_page_set = set()
@@ -89,8 +95,8 @@ def categorize_device(raw_device):
         return 'kindle fire'
     if raw_device[:len('asus')] == 'asus': # e.g., 'asus nexus 7', 'asus nexus 10', 'asus me173x'
         return 'asus'
-
-
+    
+    
 #     if raw_device in ['cw-vi8', 'kfsawi', 'd101', 'b1-750', 'pixel c', 'a1-840fhd', 'k010', 'pro7d', 'ns-15t8lte', 'a1',
 #                       'vk410', 'vk810 4g', 'qtaqz3', 'motorola xoom', 'p01m', 'b1-750', 'le pan tc802a', 'asus me173x',
 #                       'xiaomi mi pad', 'dpm7827', 'trio axs 4g', 'b1-720', 'at7-c', 'a3-a20', 'hp slate 7 voice tab',
@@ -102,17 +108,17 @@ def categorize_device(raw_device):
 #         return 'generic tablet'
     if ' tablet' in raw_device:
         return 'generic tablet'
-
+    
 #     if raw_device in ['microsoft lumia 735', 'k007', 'htc 0p6b180'] or raw_device[:len('sgp')] == 'sgp' or raw_device[:len('lg')] == 'lg' or raw_device == 'vk700':
 #         return 'generic smartphone'
-
+    
     return raw_device
 
 def categorize_browser(raw_browser):
     if raw_browser == 'firefox ios' or raw_browser == 'firefox mobile':
         return 'firefox ios/mobile'
     return raw_browser
-
+    
 def get_info_from_agent(ua_string):
     user_agent = parse(ua_string)
 #     print(str(user_agent).split(' / '))
@@ -124,7 +130,7 @@ def get_info_from_agent(ua_string):
     ''' categorize device, os, and browser '''
     device = categorize_device(device)
     browser = categorize_browser(browser)
-
+    
     return device, os, browser
 #     return [simplify_version(string) for string in str(user_agent).split(' / ')]
 #     print(user_agent.device.family, user_agent.device.brand, user_agent.device.model)
@@ -161,7 +167,7 @@ def get_channel_group(doc):
     else:
         for chanSec_dict in doc['channelSection']:
             channel_group[chanSec_dict['channelId'].lower()] += 1
-    return channel_group.keys()
+    return channel_group
 
 def get_section_group(doc):
     section_group = defaultdict(int)
@@ -171,7 +177,7 @@ def get_section_group(doc):
         for chanSec_dict in doc['channelSection']:
             if 'sectionId' in chanSec_dict:
                 section_group[chanSec_dict['sectionId'].lower()] += 1
-    return section_group.keys()
+    return section_group
 
 def get_commentCount(count):
     if count == 0:
@@ -201,30 +207,31 @@ def categorize_length(raw_length):
         return '30=<40'
     else:
         return '>40'
-
-
+    
+        
 
 def get_article_info(userlog_url, pv_start_time):
     for doc in articleInfo.find({'URL_IN_USERLOG':userlog_url}):
-
+        
         if 'body' in doc:
             try:
                 body_text = BeautifulSoup(doc['body'], "lxml").getText()
             except TypeError:
                 break
-
+            
             body_text = re.sub(r'\[.*?\]', ' ', body_text)
 #             print(body_text)
             body_length = categorize_length(len(body_text.split()))
         else:
             break
-
+#             body_text = 'unknown'
+#             body_length = 'unknown'
         channel = doc['displayChannel'] if 'displayChannel' in doc else 'unknown'
         section = doc['displaySection'] if 'displaySection' in doc else 'unknown'
-        channel_group = get_channel_group(doc) 
-        section_group = get_section_group(doc) 
+        channel_group = get_channel_group(doc) # defaultdict(int)
+        section_group = get_section_group(doc) # defaultdict(int)
         freshness = get_freshness(doc, pv_start_time)
-
+        
         page_type = doc['type'].lower() if 'type' in doc else 'unknown'
         templateType = doc['templateType'].lower() if 'templateType' in doc else 'unknown'
         blogType = doc['blogType'].lower() if 'blogType' in doc else 'unknown'
@@ -232,27 +239,27 @@ def get_article_info(userlog_url, pv_start_time):
         image = 'true' if 'image' in doc else 'false'
         writtenByForbesStaff = str(doc['writtenByForbesStaff']).lower() if 'writtenByForbesStaff' in doc else 'unknown'
         calledOutCommentCount = get_commentCount(doc['calledOutCommentCount']) if 'calledOutCommentCount' in doc else 'unknown'
-
+        
         return body_length, channel.lower(), section.lower(), channel_group, section_group, freshness, \
             page_type, templateType, blogType, storyType, image, writtenByForbesStaff, calledOutCommentCount
-
+#     return ['unknown', 'unknown', 'unknown', ['unknown'], ['unknown'], 'unknown']
     return None
-
-
+    
+    
 def get_body_text(userlog_url):
     for doc in articleInfo.find({'URL_IN_USERLOG':userlog_url}):
-
+        
         if 'body' in doc:
             body_text = BeautifulSoup(doc['body']).getText()
             body_text = re.sub(r'\[.*?\]', ' ', body_text)
         else:
             body_text = 'unknown'
-
+        
         return body_text.lower()
     return 'unknown'
 
 def remove_url_parameters(raw_url):
-    ''' remove parameters in the raw_url
+    ''' remove parameters in the raw_url 
         but keep page numbers '''
     parse_result = urlparse(raw_url)
     clean_url = '{0}://{1}{2}'.format(parse_result.scheme, parse_result.netloc, parse_result.path)
@@ -264,32 +271,29 @@ class Pageview:
     def __init__(self, uid, url, depth_dwell, **auxiliary):
         self.uid = uid
         self.url = url
-        self.depth_truth = depth_dwell # dwell: [3,3,4, ..., 2,2]
-        self.pagelevel_auxfeats = auxiliary
-        
-    def depth_truth_gen(self):
-        return enumerate(self.depth_truth, start=1)
-'''
+        self.screen, self.viewport = auxiliary['screen'], auxiliary['viewport']
+        self.create_depth_level(uid, url, depth_dwell, auxiliary)
+    
     def create_depth_level(self, uid, url, depth_dwell, auxiliary):
         """ convert pageview level data to depth level data
         depth level data are used to train the predictive model """
         self.depth_level_rows = []
         for depth, dwell in enumerate(depth_dwell, start=1):
-            self.depth_level_rows.append((dwell, uid, url,
-#                                           top, bottom,
-                                          auxiliary['screen'], auxiliary['viewport'],
+            self.depth_level_rows.append((dwell, uid, url, 
+#                                           top, bottom, 
+                                          auxiliary['screen'], auxiliary['viewport'], 
                                           auxiliary['geo'], auxiliary['agent'],
-                                          auxiliary['weekday'], auxiliary['hour'],
+                                          auxiliary['weekday'], auxiliary['hour'], 
                                           auxiliary['length'], auxiliary['channel'], auxiliary['section'],
                                           auxiliary['channel_group'], auxiliary['section_group'],
                                           auxiliary['fresh'], auxiliary['device'], auxiliary['os'],
                                           auxiliary['browser'], auxiliary['page_type'], auxiliary['templateType'],
-                                          auxiliary['blogType'], auxiliary['storyType'], auxiliary['image'],
+                                          auxiliary['blogType'], auxiliary['storyType'], auxiliary['image'], 
                                           auxiliary['writtenByForbesStaff'], auxiliary['calledOutCommentCount']
                                           ))
-'''
 
-
+    
+        
 
 
 valid_pv_num = 0
@@ -317,83 +321,87 @@ while not done:
         freq_uids.skip(user_num)
         for user_doc in freq_uids: # for each unique user
             uid = user_doc['uid']
-
+                        
             if user_num % 10000 == 0:
                 print(user_num)
             user_num += 1
-
-
+            
+            
             """ for each page view """
             for pv_doc in userlog.find({'uid':uid}):
                 url = pv_doc['url']
                 unix_start_time = pv_doc['unix_start_time']
-
-
+                      
+                 
 #                 if unix_start_time < 1449792000 or unix_start_time > 1450656000:
 #                     continue
-
+                
                 """ if this page is not a frequent page """
 #                 if url not in freq_page_set:
 #                     continue
-
-
-                depth_dwell = viewport_behaviors(pv_doc['loglist'], TASK, VIEWABILITY_THRESHOLD)
+                
+        
+                depth_dwell = viewport_behaviors(pv_doc['loglist'], TASK, VIEWABILITY_THRESHOLD) 
 #                 print(depth_dwell)
                 if depth_dwell is None:
-                    continue
-
+                    continue     
+                
                 if TASK == 'r' and all(v == 0 for v in depth_dwell):
                     continue
-
+                
                 ''' AUXILIARY FEATURES '''
                 screen_size = pv_doc['loglist'][0]['additionalinfo']['screenSize'] if 'screenSize' in pv_doc['loglist'][0]['additionalinfo'] else 'unknown'
-
+                
                 viewport_size = pv_doc['loglist'][0]['additionalinfo']['viewportSize'] if 'viewportSize' in pv_doc['loglist'][0]['additionalinfo'] else 'unknown'
-
+                
                 user_geo = get_user_geo(pv_doc['country'], pv_doc['state'])
-
+                
+                
                 isodate = pv_doc['local_start_time']
-                # The range of weekday is [0, 6]
-                local_weekday, local_hour = (str(isodate.weekday()), str(isodate.hour)) if isodate else ('unknown', 'unknown')
-
-
+                if isodate:
+                    local_weekday, local_hour = str(isodate.weekday()), str(isodate.hour) # The range of weekday is [0, 6]
+                else:
+                    local_weekday, loca_hour = 'unknown', 'unknown'
+                
                 article_info = get_article_info(url, pv_doc['unix_start_time'])
                 if not article_info:
                     continue
-
+                
 #                 print(article_info)
                 body_length, channel, section, channel_group, section_group, freshness, \
                 page_type, templateType, blogType, storyType, image, writtenByForbesStaff, calledOutCommentCount = article_info
-
-
+                                
+                
                 device, os, browser = get_info_from_agent(pv_doc['ua'])
-
+                
                 if browser == 'moatbot': # suspect robot
                     continue
-
-
+                
+                
                 depth_dwell_counter.update(depth_dwell)
-                geo_counter.update((user_geo))
+                geo_counter.update([user_geo])
                 channel_counter.update(channel_group)
                 section_counter.update(section_group)
-                length_counter.update((body_length))
-                device_counter.update((device))
-                os_counter.update((os))
-                browser_counter.update((browser))
-                commentCount_counter.update((calledOutCommentCount))
-
-
+                length_counter.update([body_length])
+                
+                
+                device_counter.update([device])
+                os_counter.update([os])
+                browser_counter.update([browser])
+                commentCount_counter.update([calledOutCommentCount])
+            
+                
                 ''' this is a valid page view '''
                 valid_pv_num += 1
                 user_freq[uid] += 1
                 clean_url = remove_url_parameters(url)
                 page_freq[clean_url] += 1
-
-                pageview = Pageview(uid, clean_url, depth_dwell, screen=screen_size,
-                                    viewport=viewport_size, geo=user_geo, agent=pv_doc['ua'],
-                                    weekday=local_weekday, hour=local_hour,
+                
+                pageview = Pageview(uid, clean_url, depth_dwell, screen=screen_size, 
+                                    viewport=viewport_size, geo=user_geo, agent=pv_doc['ua'], 
+                                    weekday=local_weekday, hour=local_hour, 
                                     length=body_length, channel=channel, section=section,
-                                    channel_group=channel_group, section_group=section_group,
+                                    channel_group=channel_group, section_group=section_group, 
                                     fresh=freshness, device=device, os=os, browser=browser,
                                     page_type=page_type, templateType=templateType, blogType=blogType,
                                     storyType=storyType, image=image, writtenByForbesStaff=writtenByForbesStaff,
@@ -404,7 +412,7 @@ while not done:
     except CursorNotFound:
         print("pymongo.errors.CursorNotFound")
         print("Will start from", user_num)
-
+        
 
 
 
@@ -528,18 +536,18 @@ print()
 #     for pv in pvs:
 #         uid = pv.uid
 #         url = pv.url
-#         if ( user_freq[uid] < FURTHER_COLD_START_THRESHOLD or
+#         if ( user_freq[uid] < FURTHER_COLD_START_THRESHOLD or 
 #              page_freq[url] < FURTHER_COLD_START_THRESHOLD ):
 #             continue
 #         user_freq2[uid] += 1
-#         page_freq2[url] += 1
+#         page_freq2[url] += 1 
 #         valid_pv_num2 += 1
 #         filtered_dataset.append(pv)
 #     return filtered_dataset
-#
-#
+# 
+# 
 # all_pageviews = filter_pageviews_by_minPVnum(all_pageviews)
-#
+# 
 # print()
 # print("=============== Statistics of Further Data ================")
 # print("valid_pv_num2 =", valid_pv_num2)
@@ -551,7 +559,7 @@ print()
 
 print("\n=============== Separating Training and Test Data ================")
 """ Randomly pick training, validation and test instances """
-training_set = [] # save Pageview instances
+training_set = []
 validate_set = []
 test_set = []
 # all_training_text = defaultdict(str) # url -> body_text
@@ -565,7 +573,7 @@ pages_in_val = defaultdict(int)
 # for pv in all_pageviews:
 #     uid = pv.uid
 #     url = pv.url
-#
+#     
 #     if uid not in users_in_train or url not in pages_in_train:
 #         ''' if this is the first time that we see this user or this page '''
 #         training_set.append(pv)
@@ -574,7 +582,7 @@ pages_in_val = defaultdict(int)
 #         ''' mark that the user and the page has been added to training data once '''
 #         users_in_train[uid] += 1
 #         pages_in_train[url] += 1
-#
+#         
 #     elif (users_in_train[uid] / user_freq2[uid] < 0.7 or
 #         pages_in_train[url] / page_freq2[url] < 0.7):
 #         ''' if we have seen this user and page, but not enough history in the training data '''
@@ -584,7 +592,7 @@ pages_in_val = defaultdict(int)
 #         ''' mark that the user and the page has been added to training data once '''
 #         users_in_train[uid] += 1
 #         pages_in_train[url] += 1
-#
+#         
 #     else:
 #         if (users_in_val[uid] / (user_freq2[uid] - users_in_train[uid]) < 0.95 and
 #         pages_in_val[url] / (page_freq2[url] - pages_in_train[url]) < 0.95):
@@ -600,7 +608,7 @@ pages_in_val = defaultdict(int)
 for pv in all_pageviews:
     uid = pv.uid
     url = pv.url
-
+    
     if user_freq[uid] > 8 and page_freq[url] > 8:
         test_set.append(pv)
         user_freq[uid] -= 1
@@ -615,7 +623,7 @@ for pv in all_pageviews:
         training_set.append(pv)
         users_in_train[uid] += 1
         pages_in_train[url] += 1
-
+        
 #     if user_freq[uid] <= 5 or page_freq[url] <= 5:
 #         training_set.append(pv)
 #         ''' mark that the user and the page has been added to training data once '''
@@ -635,21 +643,15 @@ for pv in all_pageviews:
 if TASK == 'c':
     positive_num_train = {0:0, 1:0}
     for pv in training_set:
-        for _, truth in pv.depth_truth_gen():
-            positive_num_train[truth] += 1
+        for depth_row in pv.depth_level_rows:
+            positive_num_train[depth_row[0]] += 1
     print("\nIn the training data, %f depth dwell times are at least %d seconds" % (positive_num_train[1]/sum(positive_num_train.values()), VIEWABILITY_THRESHOLD))
-
+    
     positive_num_val = {0:0, 1:0}
     for pv in validate_set:
-        for _, truth in pv.depth_truth_gen():
-            positive_num_val[truth] += 1
+        for depth_row in pv.depth_level_rows:
+            positive_num_val[depth_row[0]] += 1
     print("In the validation data, %f depth dwell times are at least %d seconds" % (positive_num_val[1]/sum(positive_num_val.values()), VIEWABILITY_THRESHOLD))
-
-    positive_num_test = {0:0, 1:0}
-    for pv in test_set:
-        for _, truth in pv.depth_truth_gen():
-            positive_num_test[truth] += 1
-    print("In the test data, %f depth dwell times are at least %d seconds" % (positive_num_test[1]/sum(positive_num_test.values()), VIEWABILITY_THRESHOLD))
 
 
 
@@ -662,7 +664,7 @@ if not (pages_in_val.keys() - pages_in_train.keys()):
     print('The pages in validation data are also in the training data')
 else:
     print('!!! Some pages in validation data are NOT in the training data !!!')
-print()
+print()      
 
 
 
@@ -711,7 +713,7 @@ del checked_users
 del checked_pages
 
 
-
+        
 print()
 print(len(training_set), "pageviews in the training set")
 print(len(validate_set), "pageviews in the validation set")
@@ -738,3 +740,4 @@ del users_in_val
 del pages_in_val
 
 del all_pageviews
+
