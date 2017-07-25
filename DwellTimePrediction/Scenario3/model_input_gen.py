@@ -24,14 +24,14 @@ def categorize_vp_hei(raw_vp_hei):
     elif raw_vp_hei >= 11:
         return '>=11'
     else:
-        return str(raw_vp_hei) 
+        return str(raw_vp_hei)
 
 def discretize_pixel_area(pixels):
     if pixels == 'unknown':
         return pixels, pixels
     wid, hei = [int(p)//100 for p in pixels.split('x')]
     return categorize_vp_wid(wid), categorize_vp_hei(hei)
-   
+
 def add_vector_features(feat_dict, name_head, vector):
     for i in range(len(vector)):
         feat_dict[ ''.join([name_head, str(i)]) ] = vector[i]
@@ -42,20 +42,25 @@ def hashstr(s):
 
 
 
+class X_pageview():
+    def __init__(self):
+        ''' PAGE-LEVEL FEATURES '''
+        self.user_index = None
+        self.page_index = None
+        self.user_features = None # np.array
+        self.page_features = None
+        self.context_features = None
+        self.depth_truth = None
 
-class X_instance():
-    def __init__(self, cntxt, dep, u, p):
-        self.user = u
-        self.page = p
-        self.depth = dep
-        self.context = cntxt # np.array
-#         print('=====================')
-#         print(cntxt)
-#         print('=====================')
-        
-    def gen_more_feats(self):
-        return self.context
-    
+    def aux_feats(self):
+#         print(self.user_features.shape)
+#         print(self.page_features.shape)
+#         print(self.context_features.shape)
+        return np.concatenate((self.user_features, self.page_features, self.context_features), axis=0)
+
+    def depths(self):
+        return [d for d in range(1, 101)] # depth index stars from 1
+
 #     def dense_depth(self):
 #         dense_vec = [0] * 100
 #         dense_vec[self.depth - 1] = 1
@@ -74,143 +79,115 @@ page2index = {} # include both training and test pages
 vp_wid_counter = Counter()
 vp_hei_counter = Counter()
 def input_vector_builder(pageviews):
-    X = [] # reusable; [ [{...}, {...}], [{...}], ... ]
-    y = [] # [ [2, 4], [3], ...]
-    no_d2v_dep_num = 0
+    '''
+    "pageviews" contains a list of Pageview instances.
+    '''
+    pv_examples = []
+
     for pv_index, pv in enumerate(pageviews):
 #         print(pv_index+1, "/", len(pageviews))
-        pv_X = []
-        pv_y = []
-        for index, (dwell, uid, clean_url, 
-#              top, bottom,
-              screen, viewport, geo, agent,
-                weekday, hour, length, channel, section, channel_group, section_group, 
-                    fresh, device, os, browser, page_type, templateType, blogType, storyType, 
-                    image, writtenByForbesStaff, commentCount) in enumerate(pv.depth_level_rows):            
-            
-            
-            '''
-            Depth, User, Page indices all start from 1, not 0 !!!
-            '''
-            #             feature_dict['depth'] = index + 1
-            depth = index + 1 # range: [1, 100], must be an integer
-            
-            hashed_uid = hashstr(uid)
-            hashed_url = hashstr(clean_url)
-            if hashed_uid not in user2index:
-                user2index[hashed_uid] = len(user2index) + 1
-            if hashed_url not in page2index:
-                page2index[hashed_url] = len(page2index) + 1
-            
-            
-            
-            '''
-            Add Doc2Vec vector of this page
-            '''
-#             try:
-#                 d2v_vec = doc2vec.docvecs[url] # the url here is the URL_IN_USERLOG 
-# #                 print(d2v_vec)
-#                 add_vector_features(feature_dict, 'd2v', d2v_vec)
-#             except KeyError:
-#                 # the missing will be "0,0,0,0,0"
-#                 no_d2v_dep_num += 1
-#                 continue
-            
-                      
-            ''' USER FEATURES '''
-            hashed_geo = hashstr('='.join(['geo', 'other'])) if geo in tts.geo_convert2OTHER else hashstr('='.join(['geo', geo]))
-            
-            USER_FEATURES = ((hashed_geo, 1), )
-            
-            
-            
-            ''' PAGE FEATURES '''
-#             features.append(hashstr('='.join(['channel', channel])))
-#             features.append(hashstr('='.join(['section', section])))
-            
-            chan_sum = sum(channel_group.values())
-            hashed_cha_group = tuple((hashstr('='.join(['chans', cha])), channel_group[cha] / chan_sum) for cha in channel_group)
-#             hashed_cha_group = tuple((hashstr('='.join(['chans', cha])), 1) for cha in channel_group)
-            
-            sec_sum = sum(section_group.values())
-#             hashed_sec_group = tuple((hashstr('='.join(['secs', sec])), 1) for sec in section_group)
-            hashed_sec_group = tuple((hashstr('='.join(['secs', sec])), section_group[sec] / sec_sum) for sec in section_group)
 
-#             if len(channel_group) > 1 and len(section_group) > 1:
-#                 print()
-            
-            hashed_page_meta = ((hashstr('='.join(['length', length])), 1),
-                                (hashstr('='.join(['fresh', fresh])), 1), 
-                                (hashstr('='.join(['page_type', page_type])), 1),
-                                (hashstr('='.join(['tempType', templateType])), 1), 
-                                (hashstr('='.join(['blogType', blogType])), 1),
-                                (hashstr('='.join(['storyType', storyType])), 1), 
-                                (hashstr('='.join(['image', image])), 1),
-                                (hashstr('='.join(['forbesStaff', writtenByForbesStaff])), 1),
-                                (hashstr('='.join(['commentCount', commentCount])), 1)
-                                )
-            
-            PAGE_FEATURES = hashed_cha_group + hashed_sec_group + hashed_page_meta
+        hashed_uid = hashstr(pv.uid)
+        if hashed_uid not in user2index:
+            user2index[hashed_uid] = len(user2index) + 1
 
-            
-            ''' CONTEXT FEATURES '''
-            hashed_device = hashstr('='.join(['device', 'OTHER'])) if device in tts.device_convert2OTHER else hashstr('='.join(['device', device]))
-            
-            hashed_os = hashstr('='.join(['os', 'OTHER'])) if os in tts.os_convert2OTHER else hashstr('='.join(['os', os]))
-            
-            hashed_browser = hashstr('='.join(['browser', 'OTHER'])) if browser in tts.browser_convert2OTHER else hashstr('='.join(['browser', browser]))
-            
-            vp_wid, vp_hei = discretize_pixel_area(viewport)
-            vp_wid_counter.update([vp_wid])
-            vp_hei_counter.update([vp_hei])
-            
-            CONTEXT_FEATURES = ((hashed_device, 1), (hashed_os, 1), (hashed_browser, 1), 
-                                (hashstr('='.join(['weekday', weekday])), 1),
-                                (hashstr('='.join(['hour', hour])), 1),
-                                (hashstr('='.join(['vp_wid', vp_wid])), 1),
-                                (hashstr('='.join(['vp_hei', vp_hei])), 1)
-                                )
-            
-            ALL_FEATURES = np.array(USER_FEATURES + PAGE_FEATURES + CONTEXT_FEATURES)
-            
-            x_inst = X_instance(ALL_FEATURES, depth, hashed_uid, hashed_url)
-            
-            
-            pv_X.append(x_inst)
-#             pv_y.append(float(dwell))
-            pv_y.append([float(dwell)]) # required for 'many to many'; Example: http://stackoverflow.com/questions/38294046/simple-recurrent-neural-network-with-keras
-            unique_feature_names.update(f for f, _ in ALL_FEATURES)
+        hashed_url = hashstr(pv.url)
+        if hashed_url not in page2index:
+            page2index[hashed_url] = len(page2index) + 1
+
+
+        X_pv = X_pageview()
+        X_pv.user_index = user2index[hashed_uid]
+        X_pv.page_index = page2index[hashed_url]
+
+        ''' USER FEATURES '''
+        geo = pv.pagelevel_auxfeats['geo']
+        hashed_geo = hashstr('='.join(['geo', 'other'])) if geo in tts.geo_convert2OTHER else hashstr('='.join(['geo', geo]))
+        X_pv.user_features = np.array([(hashed_geo, 1), ], dtype='float32')
+
+
+        ''' PAGE FEATURES '''
+#         displayChannel = [(hashstr('='.join(['disChan', pv.pagelevel_auxfeats['channel']])), 1), ]
+#         displaySection = [(hashstr('='.join(['disSec', pv.pagelevel_auxfeats['section']])), 1), ]
         
-        if pv_X: # if the body is not valid, pv_X will be [] (if "continue")
-            X.append(pv_X)
-            y.append(pv_y)
-        
-#     print("%d in %d (%f) pageviews have no valid body content" % 
-#         (no_d2v_dep_num/100, pv_index, no_d2v_dep_num/100/pv_index))
-    
-    return X, y
+        channel_group = pv.pagelevel_auxfeats['channel_group']
+        chan_sum = sum(channel_group.values())
+        hashed_cha_group = [(hashstr('='.join(['chans', cha])), channel_group[cha] / chan_sum) for cha in channel_group]
+#         hashed_cha_group = [(hashstr('='.join(['chans', cha])), 1) for cha in channel_group]
+
+        section_group = pv.pagelevel_auxfeats['section_group']
+        sec_sum = sum(section_group.values())
+#         hashed_sec_group = [(hashstr('='.join(['secs', sec])), 1) for sec in section_group]
+        hashed_sec_group = [(hashstr('='.join(['secs', sec])), section_group[sec] / sec_sum) for sec in section_group]
+
+
+        hashed_page_meta = [
+                            (hashstr('='.join(['disChan', pv.pagelevel_auxfeats['channel']])), 1),
+                            (hashstr('='.join(['disSec', pv.pagelevel_auxfeats['section']])), 1),
+                            (hashstr('='.join(['len', pv.pagelevel_auxfeats['length']])), 1),
+                            (hashstr('='.join(['frsh', pv.pagelevel_auxfeats['fresh']])), 1),
+                            (hashstr('='.join(['page_t', pv.pagelevel_auxfeats['page_type']])), 1),
+                            (hashstr('='.join(['temp', pv.pagelevel_auxfeats['templateType']])), 1),
+                            (hashstr('='.join(['blog', pv.pagelevel_auxfeats['blogType']])), 1),
+                            (hashstr('='.join(['story', pv.pagelevel_auxfeats['storyType']])), 1),
+                            (hashstr('='.join(['image', pv.pagelevel_auxfeats['image']])), 1),
+                            (hashstr('='.join(['staff', pv.pagelevel_auxfeats['writtenByForbesStaff']])), 1),
+                            (hashstr('='.join(['comment', pv.pagelevel_auxfeats['calledOutCommentCount']])), 1)
+                            ]
+
+        X_pv.page_features = np.array(hashed_cha_group + hashed_sec_group + hashed_page_meta, dtype='float32')
+
+
+        ''' CONTEXT FEATURES '''
+        device, os, browser = pv.pagelevel_auxfeats['device'], pv.pagelevel_auxfeats['os'], pv.pagelevel_auxfeats['browser']
+        hashed_device = hashstr('='.join(['device', 'OTHER'])) if device in tts.device_convert2OTHER else hashstr('='.join(['device', device]))
+        hashed_os = hashstr('='.join(['os', 'OTHER'])) if os in tts.os_convert2OTHER else hashstr('='.join(['os', os]))
+        hashed_browser = hashstr('='.join(['browser', 'OTHER'])) if browser in tts.browser_convert2OTHER else hashstr('='.join(['browser', browser]))
+
+        vp_wid, vp_hei = discretize_pixel_area(pv.pagelevel_auxfeats['viewport'])
+        vp_wid_counter.update([vp_wid])
+        vp_hei_counter.update([vp_hei])
+
+        X_pv.context_features = np.array([(hashed_device, 1), (hashed_os, 1), (hashed_browser, 1),
+                                    (hashstr('='.join(['vp_wid', vp_wid])), 1),
+                                    (hashstr('='.join(['vp_hei', vp_hei])), 1),
+                                    (hashstr('='.join(['weekday', pv.pagelevel_auxfeats['weekday']])), 1),
+                                    (hashstr('='.join(['hour', pv.pagelevel_auxfeats['hour']])), 1)
+                                    ], dtype='float32')
+
+
+        ''' TARGET VARIABLE '''
+        X_pv.depth_truth = np.array([[float(target)] for target in pv.depth_truth], dtype='float32') # required for 'many to many'; Example: http://stackoverflow.com/questions/38294046/simple-recurrent-neural-network-with-keras
+
+
+        unique_feature_names.update(f for f, _ in X_pv.aux_feats())
+
+
+        pv_examples.append(X_pv)
+
+    return pv_examples
 
 
 
 print("Building training vectors ...")
-X_train, y_train = input_vector_builder(tts.training_set) 
+training_examples = input_vector_builder(tts.training_set)
 del tts.training_set
 
 print("Building validation vectors ...")
-X_val, y_val = input_vector_builder(tts.validate_set)  
+validation_examples = input_vector_builder(tts.validate_set)
 del tts.validate_set
 
 print("Building test vectors ...")
-X_test, y_test = input_vector_builder(tts.test_set) 
-del tts.test_set 
-# print(np.array(y_train).shape)
-print(len(unique_feature_names), "unique feature names") 
+test_examples = input_vector_builder(tts.test_set)
+del tts.test_set
+
+print(len(unique_feature_names), "unique feature names")
 print(unique_feature_names)
 
 print()
-print("X_train contains %d training examples" % len(X_train))
-print("X_val contains %d validation examples" % len(X_val))
-print("X_test contains %d test examples" % len(X_test))
+print("training_examples contains %d training examples" % len(training_examples))
+print("validation_examples contains %d validation examples" % len(validation_examples))
+print("test_examples contains %d test examples" % len(test_examples))
 print()
 
 
@@ -239,60 +216,53 @@ del tts.geo_convert2OTHER
 del tts.os_convert2OTHER
 del tts.browser_convert2OTHER
 
-# del doc2vec
-# del tts.all_training_text
 
-
-# vectorizer = DictVectorizer(dtype=np.float32) 
 
 class Vectorizer:
     def __init__(self, feature_names):
         self.feat_dict = {feature : index for index, feature in enumerate(feature_names)}
-        
-    def transform(self, X_batch): # X_batch contains 100 depths in one single page view, len(X_batch) = 100
+
+    def transform(self, X_batch):
+        '''
+        X_batch is aX_pageview representing one single page view
+        '''
         X = []
-        for x in X_batch:
+        for d in X_batch.depths(): # ranging from [1, 100]
             vec = [0] * len(self.feat_dict)
-#             for f, v in x.gen_more_feats():
-#                 vec[self.feat_dict[f]] = v
-            for f, v in x.gen_more_feats():
+            for f, v in X_batch.aux_feats():
                 vec[self.feat_dict[f]] = v
-            
+
             X.append(vec)
         return np.array(X, dtype='float32')
 
-vectorizer = Vectorizer(unique_feature_names) 
+vectorizer = Vectorizer(unique_feature_names)
 
 del unique_feature_names
 
-# print(None in unique_feature_names)
-# print('' in unique_feature_names)
-# print('none' in unique_feature_names)
 
-# print("Fitting feature names")
-# vectorizer.fit([{feat_name:1 for feat_name in unique_feature_names}]) # dummy input
-# print("The length of each vector will be", len(vectorizer.feature_names_))
+# np.set_printoptions(threshold=np.nan)
 
-np.set_printoptions(threshold=np.nan)
 
-def Xy_gen(X, y, batch_size=10):
+def Xy_gen(input_examples, batch_size=10):
+    '''
+    "input_examples" contains a list of X_pageview instances
+    '''
     X_batch_u = []
     X_batch_p = []
     X_batch_ctx = []
     X_batch_dep = []
     y_batch = []
 
-    for Xinst_pv, y_pv in random.sample(list(zip(X, y)), len(y)): # shuffle pageviews
-#     for Xinst_pv, y_pv in list(zip(X, y)):
-        ''' Xinst_pv is about one pageview which has 100 X_instance '''
+    for Xinst_pv in random.sample(input_examples, len(input_examples)): # shuffle pageviews
+        ''' Xinst_pv is one pageview '''
         X_batch_ctx.append( vectorizer.transform(Xinst_pv) )
 #         print(vectorizer.transform(Xinst_pv))
-        user_index = user2index[Xinst_pv[0].user]
-        page_index = page2index[Xinst_pv[0].page]
-        X_batch_u.append(np.array([user_index] * 100))
-        X_batch_p.append(np.array([page_index] * 100))
-        X_batch_dep.append( [x.depth for x in Xinst_pv] )
-        y_batch.append( y_pv )
+        
+        X_batch_u.append(np.array([Xinst_pv.user_index] * 100))
+        X_batch_p.append(np.array([Xinst_pv.page_index] * 100))
+
+        X_batch_dep.append( Xinst_pv.depths() )
+        y_batch.append( Xinst_pv.depth_truth )
         if len(y_batch) == batch_size:
 #             print(np.array(X_batch_ctx).shape)
 #             print(np.array(X_batch_dep).shape)
@@ -307,7 +277,7 @@ def Xy_gen(X, y, batch_size=10):
             X_batch_u.clear()
             X_batch_p.clear()
             y_batch.clear()
-            
+
     if len(y_batch) != 0:
         yield np.array(X_batch_ctx, dtype='float32'), \
               np.array(X_batch_dep, dtype='float32'), \
@@ -319,5 +289,3 @@ def Xy_gen(X, y, batch_size=10):
         X_batch_u.clear()
         X_batch_p.clear()
         y_batch.clear()
-        
-        

@@ -260,7 +260,7 @@ def RNN_upc_embed_r(ctx_feat_num, user_num, page_num, timestep_num=100):
 
 
 def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
-    optimizer = SGD(lr=0.01, decay=1e-6, momentum=0.99, nesterov=True)
+    optimizer = SGD(lr=0.001, decay=1e-6, momentum=0.99, nesterov=True)
 # optimizer = RMSprop(lr=0.0001, rho=0.9, epsilon=1e-08)
 # optimizer = Adam(lr=0.0001)
 
