@@ -10,9 +10,12 @@ from keras.layers.recurrent import LSTM, GRU, SimpleRNN
 from keras.layers.wrappers import TimeDistributed, Bidirectional
 from keras.layers.normalization import BatchNormalization
 from keras.layers.advanced_activations import LeakyReLU
+from keras.callbacks import LearningRateScheduler
 from keras.models import Model
 from keras.regularizers import l2, l1
 # from keras.utils.visualize_util import plot
+
+from prespecified_parameters import STEP_DECAY, LR_RATES
 
 
 '''
@@ -260,10 +263,15 @@ def RNN_upc_embed_r(ctx_feat_num, user_num, page_num, timestep_num=100):
 
 
 def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
-    optimizer = SGD(lr=0.001, decay=1e-6, momentum=0.99, nesterov=True)
+    if STEP_DECAY:
+        optimizer = SGD(lr=LR_RATES[0], decay=0, momentum=0.99, nesterov=True)
+    else:
+        optimizer = SGD(lr=0.01, decay=1e-6, momentum=0.99, nesterov=True)
 # optimizer = RMSprop(lr=0.0001, rho=0.9, epsilon=1e-08)
 # optimizer = Adam(lr=0.0001)
+    
 
+    
     user_input = Input(shape=(timestep_num,), name='user_input')
     user_embed = Embedding(input_dim=user_num+1, output_dim=500, input_length=timestep_num,
                             weights=None, 

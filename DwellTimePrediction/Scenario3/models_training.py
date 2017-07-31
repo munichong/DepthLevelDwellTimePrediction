@@ -9,18 +9,20 @@ from math import sqrt
 from sklearn.metrics import log_loss, mean_squared_error
 from sklearn.linear_model import SGDRegressor
 from sklearn.metrics import log_loss, roc_auc_score, accuracy_score
+from keras import backend as K
 
 start_time = time.time()
 
 import model_input_gen as mig # This will run other modules
 from keras_models import FNN_onestep_r, FNN_onestep_c, RNN_upc_embed_r, RNN_upc_embed_c, linearRegression_keras, logisticRegression_keras
 from keras.models import load_model
-from prespecified_parameters import TASK, VIEWABILITY_THRESHOLD
+from prespecified_parameters import TASK, VIEWABILITY_THRESHOLD, STEP_DECAY, LR_RATES
 
 
 # BATCH_SIZE = len(mig.training_examples)
 BATCH_SIZE = 128
-NUM_EPOCH = 22
+NUM_EPOCH = 12
+
 
 
 
@@ -191,9 +193,26 @@ class pooling_filter():
         print(res.result())
 
 
+def make_prediction(examples):
+    if TASK == 'r':
+        globalAvg_err = regression_metric_batch()
+        lr_err = regression_metric_batch()
+        rnn_err = regression_metric_batch()
+    elif TASK == 'c':
+        globalAvg_err = classification_metric_batch()
+        lr_err = classification_metric_batch()
+        rnn_err = classification_metric_batch()
 
 
 
+    for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(examples, batch_size=BATCH_SIZE):
+        globalAvg_err.update( y_batch, globalAverage.predict(BATCH_SIZE) )
+        lr_err.update(y_batch, lr.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
+        rnn_err.update( y_batch, rnn.predict_on_batch({'dep_input':X_batch_dep,
+                                                            'ctx_input':X_batch_ctx,
+                                                            'user_input': X_batch_u,
+                                                            'page_input': X_batch_p}) )
+    return globalAvg_err, lr_err, rnn_err
 
 if __name__ == "__main__":
     num_batch = math.ceil( len(mig.training_examples) / BATCH_SIZE )
@@ -221,10 +240,11 @@ if __name__ == "__main__":
 
     post_filter = pooling_filter()
 
-    # _array = []
+    
     train_error_history = []
     val_error_history = []
     test_error_history = []
+    learning_rate_history = []
     print("\n****** Iterating over each batch of the training data ******")
     for epoch in range(1, NUM_EPOCH+1):
         batch_index = 0
@@ -251,9 +271,8 @@ if __name__ == "__main__":
                                            'user_input': X_batch_u,
                                            'page_input': X_batch_p,
                                            }, y_batch)
-    #         print(loss.history)
-    #         print(rnn.metrics_names)
-    #         print(loss_rnn)
+    
+    
             if TASK == 'r':
                 print("Epoch %d/%d : Batch %d/%d | %s = %.4f | root_%s = %.4f" %
                       (epoch, NUM_EPOCH, batch_index, num_batch,
@@ -264,7 +283,14 @@ if __name__ == "__main__":
                        rnn.metrics_names[0], loss_rnn[0], rnn.metrics_names[1], loss_rnn[1], rnn.metrics_names[2], loss_rnn[2]))
 
 
-
+        ''' Tracking the learning rate '''
+        lrate = rnn.optimizer.lr.get_value()
+        lrate *= (1. / (1. + rnn.optimizer.decay.get_value() * rnn.optimizer.iterations.get_value()))
+        print('The Learning rate at the end of epoch', epoch, ":", lrate)
+        
+        learning_rate_history.append((epoch, lrate))
+        if STEP_DECAY:
+            K.set_value(rnn.optimizer.lr, LR_RATES[epoch])
 
 
 
@@ -296,7 +322,8 @@ if __name__ == "__main__":
 
         train_error_history.append(rnn_train_err.result())
 
-
+        print()
+        print("****** Epoch", epoch, ": training_error =", rnn_train_err.result(), '\n')
 
 
 
@@ -304,34 +331,11 @@ if __name__ == "__main__":
         '''
         Use the RNN trained in the epoch to predict and calculate the validation error of this epoch
         '''
-        if TASK == 'r':
-            globalAvg_val_err = regression_metric_batch()
-            lr_val_err = regression_metric_batch()
-            rnn_val_err = regression_metric_batch()
-        elif TASK == 'c':
-            globalAvg_val_err = classification_metric_batch()
-            lr_val_err = classification_metric_batch()
-            rnn_val_err = classification_metric_batch()
-
-
-
-        for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.validation_examples, batch_size=BATCH_SIZE):
-            globalAvg_val_err.update( y_batch, globalAverage.predict(BATCH_SIZE) )
-            lr_val_err.update(y_batch, lr.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
-            rnn_val_err.update( y_batch, rnn.predict_on_batch({'dep_input':X_batch_dep,
-                                                                'ctx_input':X_batch_ctx,
-                                                                'user_input': X_batch_u,
-                                                                'page_input': X_batch_p}) )
-
-
+        globalAvg_val_err, lr_val_err, rnn_val_err = make_prediction(mig.validation_examples)
         val_error_history.append((globalAvg_val_err.result(),
                                    lr_val_err.result(),
                                    rnn_val_err.result()))
-
-
-
-        print()
-        print("****** Epoch", epoch, ": training_error =", rnn_train_err.result(), '\n')
+        
         print()
         print("================= Performance on the Validation Set =======================")
         print("****** Epoch", epoch, ": The validation error of GlobalAverage =", globalAvg_val_err.result())
@@ -340,6 +344,22 @@ if __name__ == "__main__":
         print("===========================================================================")
         print()
 
+
+        '''
+        Use the RNN trained in the epoch to predict and calculate the test error of this epoch
+        '''
+        globalAvg_test_err, lr_test_err, rnn_test_err = make_prediction(mig.test_examples)
+        test_error_history.append((globalAvg_test_err.result(),
+                                   lr_test_err.result(),
+                                   rnn_test_err.result()))
+        
+        print()
+        print("================= Performance on the Test Set =======================")
+        print("****** Epoch", epoch, ": The test error of GlobalAverage =", globalAvg_test_err.result())
+        print("****** Epoch", epoch, ": The test error of Linear Regression =", lr_test_err.result())
+        print("****** Epoch", epoch, ": The test error of RNN =", rnn_test_err.result())
+        print("===========================================================================")
+        print()
 
 
 
@@ -374,7 +394,7 @@ if __name__ == "__main__":
 
         epoch = 0
         print("The Performance of All Epochs So Far:")
-        for train_error_rnn, val_error_all in zip(train_error_history, val_error_history):
+        for train_error_rnn, val_error_all, test_error_all in zip(train_error_history, val_error_history, test_error_history):
             epoch += 1
             print("============ Epoch %d =============" % epoch)
             print("The training error of RNN =", train_error_rnn)
@@ -383,11 +403,18 @@ if __name__ == "__main__":
             print("The validation error of Linear Regression", val_error_all[1])
             print("The validation error of RNN =", val_error_all[2])
             print()
+            print("The test error of GlobalAverage =", test_error_all[0])
+            print("The test error of Linear Regression", test_error_all[1])
+            print("The test error of RNN =", test_error_all[2])
+            print()
 
 
     print("LR got the best performance at Epoch", best_epoch_lr)
     print("RNN got the best performance at Epoch", best_epoch_rnn)
-
+    
+    print()
+    print("LEARNING RATES:", learning_rate_history)
+    print()
 
 
 
@@ -395,6 +422,7 @@ if __name__ == "__main__":
 
     rnn_best = load_model('rnn.h5')
     lr_best = load_model('lr.h5')
+
 
     '''
     Load the RNN and LR have the lowest validation error
