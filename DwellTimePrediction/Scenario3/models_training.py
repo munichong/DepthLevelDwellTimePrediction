@@ -245,7 +245,7 @@ if __name__ == "__main__":
     train_error_history = []
     val_error_history = []
     test_error_history = []
-    learning_rate_history = []
+    learning_rate_history = [(1, LR_RATES[0])]
     print("\n****** Iterating over each batch of the training data ******")
     for epoch in range(1, NUM_EPOCH+1):
         batch_index = 0
@@ -290,7 +290,7 @@ if __name__ == "__main__":
         lrate *= (1. / (1. + rnn.optimizer.decay.get_value() * rnn.optimizer.iterations.get_value()))
         print('The Learning rate at the end of epoch', epoch, ":", lrate)
         
-        learning_rate_history.append((epoch, lrate))
+        learning_rate_history.append((epoch+1, lrate))
         if STEP_DECAY:
             K.set_value(rnn.optimizer.lr, LR_RATES[epoch])
         
@@ -420,7 +420,7 @@ if __name__ == "__main__":
     
         
     print()
-    print("LEARNING RATES:", learning_rate_history)
+    print("LEARNING RATES:", learning_rate_history[:-1])
     print()    
         
         
@@ -460,9 +460,9 @@ if __name__ == "__main__":
     
     print()
     print("================= Performance on the Test Set =======================")
-    print("The validation error of GlobalAverage =", globalAvg_test_err.result())
-    print("The validation error of LR =", lr_test_err.result())
-    print("The validation error of RNN =", rnn_test_err.result())
+    print("The test error of GlobalAverage =", globalAvg_test_err.result())
+    print("The test error of LR =", lr_test_err.result())
+    print("The test error of RNN =", rnn_test_err.result())
     print("=====================================================================")
     
     ''' APPLY SAVED POST-FILTERING '''
