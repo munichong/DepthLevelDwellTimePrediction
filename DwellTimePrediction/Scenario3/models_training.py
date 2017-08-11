@@ -20,7 +20,7 @@ from prespecified_parameters import TASK, VIEWABILITY_THRESHOLD, STEP_DECAY, LR_
 
 # BATCH_SIZE = len(mig.X_train)
 BATCH_SIZE = 128
-NUM_EPOCH = 12
+NUM_EPOCH = 40
 
 
 
@@ -201,13 +201,15 @@ def make_prediction(X, y):
         lr_err = classification_metric_batch()
         rnn_err = classification_metric_batch()
   
-    for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(X, y, batch_size=BATCH_SIZE):
+    for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, X_batch_uf, X_batch_pf, y_batch in mig.Xy_gen(X, y, batch_size=BATCH_SIZE):
         globalAvg_err.update( y_batch, globalAverage.predict(BATCH_SIZE) )
-        lr_err.update(y_batch, lr.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
+        lr_err.update(y_batch, lr.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_uf, X_batch_pf, X_batch_dep)))
         rnn_err.update( y_batch, rnn.predict_on_batch({'dep_input':X_batch_dep,
                                                             'ctx_input':X_batch_ctx,
                                                             'user_input': X_batch_u,
-                                                            'page_input': X_batch_p}) )
+                                                            'page_input': X_batch_p,
+                                                            'userfeat_input': X_batch_uf,
+                                                            'pagefeat_input': X_batch_pf}) )
     return globalAvg_err, lr_err, rnn_err            
             
             
@@ -225,10 +227,10 @@ if __name__ == "__main__":
     print('\nBuild model...')
     # rnn = RNN_simple(len(mig.vectorizer.feat_dict))
     if TASK == 'r':
-        rnn = RNN_upc_embed_r(len(mig.vectorizer.feat_dict), mig.unique_users_num, mig.unique_pages_num)
+        rnn = RNN_upc_embed_r(len(mig.unique_user_feat), len(mig.unique_page_feat), len(mig.unique_ctx_feat), mig.unique_users_num, mig.unique_pages_num)
 #         rnn = FNN_onestep_r(len(mig.vectorizer.feat_dict), mig.unique_users_num, mig.unique_pages_num)
     elif TASK =='c':
-        rnn = RNN_upc_embed_c(len(mig.vectorizer.feat_dict), mig.unique_users_num, mig.unique_pages_num)
+        rnn = RNN_upc_embed_c(len(mig.unique_user_feat), len(mig.unique_page_feat), len(mig.unique_ctx_feat), mig.unique_users_num, mig.unique_pages_num)
 #         rnn = FNN_onestep_c(len(mig.vectorizer.feat_dict), mig.unique_users_num, mig.unique_pages_num)
     
     if TASK == 'r':
@@ -250,7 +252,7 @@ if __name__ == "__main__":
     for epoch in range(1, NUM_EPOCH+1):
         batch_index = 0
         
-        for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=BATCH_SIZE):
+        for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, X_batch_uf, X_batch_pf, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=BATCH_SIZE):
             batch_index += 1
             
         #     sgdRegressor.partial_fit(X_batch, y_batch)
@@ -261,7 +263,7 @@ if __name__ == "__main__":
 
             
             ''' Baseline - Regression '''
-            loss_lr = lr.train_on_batch(merge_Xs(X_batch_ctx, X_batch_dep), y_batch)
+            loss_lr = lr.train_on_batch(merge_Xs(X_batch_ctx, X_batch_uf, X_batch_pf, X_batch_dep), y_batch)
         
             ''' RNN '''
 #             print(X_batch_dep.shape, X_batch_ctx.shape, X_batch_u.shape, X_batch_p.shape)
@@ -270,6 +272,8 @@ if __name__ == "__main__":
                                            'ctx_input':X_batch_ctx,
                                            'user_input': X_batch_u,
                                            'page_input': X_batch_p,
+                                           'userfeat_input': X_batch_uf,
+                                           'pagefeat_input': X_batch_pf,
                                            }, y_batch)
     #         print(loss.history)
     #         print(rnn.metrics_names)
@@ -305,11 +309,13 @@ if __name__ == "__main__":
         elif TASK == 'c':
             rnn_train_err = classification_metric_batch()
         
-        for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=BATCH_SIZE):  
+        for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, X_batch_uf, X_batch_pf, y_batch in mig.Xy_gen(mig.X_train, mig.y_train, batch_size=BATCH_SIZE):  
             prediction_batch = rnn.predict_on_batch({'dep_input':X_batch_dep,
                                                      'ctx_input':X_batch_ctx,
                                                      'user_input': X_batch_u,
-                                                     'page_input': X_batch_p})
+                                                     'page_input': X_batch_p,
+                                                     'userfeat_input': X_batch_uf,
+                                                     'pagefeat_input': X_batch_pf})
                     
             if np.count_nonzero(prediction_batch) == 0:
                 print("All zero")
@@ -447,16 +453,17 @@ if __name__ == "__main__":
 #     y_test = pickle.load(open('y_test.p', 'rb'))
         
 
-    for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_test, mig.y_test, batch_size=BATCH_SIZE):
+    for X_batch_ctx, X_batch_dep, X_batch_u, X_batch_p, X_batch_u, X_batch_p, y_batch in mig.Xy_gen(mig.X_test, mig.y_test, batch_size=BATCH_SIZE):
         globalAvg_test_err.update( y_batch, globalAverage.predict(BATCH_SIZE) )
-        lr_test_err.update(y_batch, lr_best.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_dep)))
+        lr_test_err.update(y_batch, lr_best.predict_on_batch(merge_Xs(X_batch_ctx, X_batch_uf, X_batch_pf, X_batch_dep)))
         rnn_test_err.update( y_batch, rnn_best.predict_on_batch({'dep_input': X_batch_dep, 
                                                                   'ctx_input': X_batch_ctx,
                                                                   'user_input': X_batch_u,
-                                                                  'page_input': X_batch_p}) )
+                                                                  'page_input': X_batch_p,
+                                                                  'userfeat_input': X_batch_uf,
+                                                                  'pagefeat_input': X_batch_pf}) )
 #     del X_test
 #     del y_test
-    
     
     print()
     print("================= Performance on the Test Set =======================")

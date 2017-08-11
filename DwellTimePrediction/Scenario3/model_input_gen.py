@@ -44,17 +44,19 @@ def hashstr(s):
 
 
 class X_instance():
-    def __init__(self, cntxt, dep, u, p):
+    def __init__(self, dep, u, p, u_feat, p_feat, c_feat):
         self.user = u
         self.page = p
         self.depth = dep
-        self.context = cntxt # np.array
+        self.user_features = u_feat
+        self.page_features = p_feat
+        self.context_features = c_feat # np.array
 #         print('=====================')
 #         print(cntxt)
 #         print('=====================')
         
     def gen_more_feats(self):
-        return self.context
+        return self.user_features, self.page_features, self.context_features
     
 #     def dense_depth(self):
 #         dense_vec = [0] * 100
@@ -67,7 +69,9 @@ unique_feature_names = set()
 user2index = {} # include both training and test users
 page2index = {} # include both training and test pages
 
-
+unique_user_feat = set()
+unique_page_feat = set()
+unique_ctx_feat = set()
 
 # doc2vec = Doc2Vec.load('../doc2vec_models_py3/d2v_model_urlinuserlog_20.doc2vec')
 
@@ -121,7 +125,7 @@ def input_vector_builder(pageviews):
             hashed_geo = hashstr('='.join(['geo', 'other'])) if geo in tts.geo_convert2OTHER else hashstr('='.join(['geo', geo]))
             
             USER_FEATURES = ((hashed_geo, 1), )
-            
+            unique_user_feat.add(hashed_geo)
             
             
             ''' PAGE FEATURES '''
@@ -151,6 +155,7 @@ def input_vector_builder(pageviews):
                                 )
             
             PAGE_FEATURES = hashed_cha_group + hashed_sec_group + hashed_page_meta
+            unique_page_feat.update(f for f, v in PAGE_FEATURES)
 
             
             ''' CONTEXT FEATURES '''
@@ -170,10 +175,13 @@ def input_vector_builder(pageviews):
                                 (hashstr('='.join(['vp_wid', vp_wid])), 1),
                                 (hashstr('='.join(['vp_hei', vp_hei])), 1)
                                 )
+            unique_ctx_feat.update(f for f, v in CONTEXT_FEATURES)
+            
             
             ALL_FEATURES = np.array(USER_FEATURES + PAGE_FEATURES + CONTEXT_FEATURES)
             
-            x_inst = X_instance(ALL_FEATURES, depth, hashed_uid, hashed_url)
+            
+            x_inst = X_instance(depth, hashed_uid, hashed_url, np.array(USER_FEATURES), np.array(PAGE_FEATURES), np.array(CONTEXT_FEATURES))
             
             
             pv_X.append(x_inst)
@@ -246,22 +254,35 @@ del tts.browser_convert2OTHER
 # vectorizer = DictVectorizer(dtype=np.float32) 
 
 class Vectorizer:
-    def __init__(self, feature_names):
-        self.feat_dict = {feature : index for index, feature in enumerate(feature_names)}
+    def __init__(self, unique_user_feat, unique_page_feat, unique_ctx_feat):
+        self.feat_dict = {feature : index for index, feature in enumerate(unique_user_feat | unique_page_feat | unique_ctx_feat)}
+        self.u_feat_dict = {feature : index for index, feature in enumerate(unique_user_feat)}
+        self.p_feat_dict = {feature : index for index, feature in enumerate(unique_page_feat)}
+        self.c_feat_dict = {feature : index for index, feature in enumerate(unique_ctx_feat)}
         
     def transform(self, X_batch): # X_batch contains 100 depths in one single page view, len(X_batch) = 100
-        X = []
+        X_u = []
+        X_p = []
+        X_c = []
         for x in X_batch:
-            vec = [0] * len(self.feat_dict)
-#             for f, v in x.gen_more_feats():
-#                 vec[self.feat_dict[f]] = v
-            for f, v in x.gen_more_feats():
-                vec[self.feat_dict[f]] = v
+            u_vec = [0] * len(self.u_feat_dict)
+            for f, v in x.user_features:
+                u_vec[self.u_feat_dict[f]] = v
+            X_u.append(u_vec)
             
-            X.append(vec)
-        return np.array(X, dtype='float32')
+            p_vec = [0] * len(self.p_feat_dict)
+            for f, v in x.page_features:
+                p_vec[self.p_feat_dict[f]] = v
+            X_p.append(p_vec)
+            
+            c_vec = [0] * len(self.c_feat_dict)
+            for f, v in x.context_features:
+                c_vec[self.c_feat_dict[f]] = v
+            X_c.append(c_vec)
+            
+        return np.array(X_u, dtype='float32'), np.array(X_p, dtype='float32'), np.array(X_c, dtype='float32')
 
-vectorizer = Vectorizer(unique_feature_names) 
+vectorizer = Vectorizer(unique_user_feat, unique_page_feat, unique_ctx_feat) 
 
 del unique_feature_names
 
@@ -277,7 +298,9 @@ del unique_feature_names
 
 def Xy_gen(X, y, batch_size=10):
     X_batch_u = []
+    X_batch_uf = []
     X_batch_p = []
+    X_batch_pf = []
     X_batch_ctx = []
     X_batch_dep = []
     y_batch = []
@@ -285,8 +308,14 @@ def Xy_gen(X, y, batch_size=10):
     for Xinst_pv, y_pv in random.sample(list(zip(X, y)), len(y)): # shuffle pageviews
 #     for Xinst_pv, y_pv in list(zip(X, y)):
         ''' Xinst_pv is about one pageview which has 100 X_instance '''
-        X_batch_ctx.append( vectorizer.transform(Xinst_pv) )
-#         print(vectorizer.transform(Xinst_pv))
+        batch_vecs_uf, batch_vecs_pf, batch_vecs_cf = vectorizer.transform(Xinst_pv)
+        X_batch_uf.append(batch_vecs_uf)
+        X_batch_pf.append(batch_vecs_pf)
+        X_batch_ctx.append(batch_vecs_cf)
+#         print('batch_vecs_uf', batch_vecs_uf)
+#         print('batch_vecs_pf', batch_vecs_pf)
+#         print('batch_vecs_cf', batch_vecs_cf)
+
         user_index = user2index[Xinst_pv[0].user]
         page_index = page2index[Xinst_pv[0].page]
         X_batch_u.append(np.array([user_index] * 100))
@@ -301,11 +330,15 @@ def Xy_gen(X, y, batch_size=10):
                   np.array(X_batch_dep, dtype='float32'), \
                   np.array(X_batch_u, dtype='float32'), \
                   np.array(X_batch_p, dtype='float32'), \
+                  np.array(X_batch_uf, dtype='float32'), \
+                  np.array(X_batch_pf, dtype='float32'), \
                   np.array(y_batch, dtype='float32')
             X_batch_ctx.clear()
             X_batch_dep.clear()
             X_batch_u.clear()
             X_batch_p.clear()
+            X_batch_uf.clear()
+            X_batch_pf.clear()
             y_batch.clear()
             
     if len(y_batch) != 0:
@@ -313,11 +346,15 @@ def Xy_gen(X, y, batch_size=10):
               np.array(X_batch_dep, dtype='float32'), \
               np.array(X_batch_u, dtype='float32'), \
               np.array(X_batch_p, dtype='float32'), \
+              np.array(X_batch_uf, dtype='float32'), \
+              np.array(X_batch_pf, dtype='float32'), \
               np.array(y_batch, dtype='float32')
         X_batch_ctx.clear()
         X_batch_dep.clear()
         X_batch_u.clear()
         X_batch_p.clear()
+        X_batch_uf.clear()
+        X_batch_pf.clear()
         y_batch.clear()
         
         

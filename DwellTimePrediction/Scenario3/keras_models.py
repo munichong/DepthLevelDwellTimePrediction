@@ -151,7 +151,7 @@ def FNN_onestep_c(ctx_feat_num, user_num, page_num, timestep_num=100):
 
 
 def RNN_upc_embed_r(ctx_feat_num, user_num, page_num, timestep_num=100):
-    optimizer = SGD(lr=0.01, decay=1e-6, momentum=0.99, nesterov=True)
+    optimizer = SGD(lr=0.001, decay=1e-6, momentum=0.99, nesterov=True)
 # optimizer = RMSprop(lr=0.0001, rho=0.9, epsilon=1e-08)
 # optimizer = Adam(lr=0.0001)
 
@@ -259,7 +259,7 @@ def RNN_upc_embed_r(ctx_feat_num, user_num, page_num, timestep_num=100):
 
 
 
-def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
+def RNN_upc_embed_c(user_feat_num, page_feat_num, ctx_feat_num, user_num, page_num, timestep_num=100):
     if STEP_DECAY:
         optimizer = SGD(lr=LR_RATES[0], decay=0, momentum=0.99, nesterov=True)
     else:
@@ -268,51 +268,68 @@ def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
 # optimizer = Adam(lr=0.0001)
 
     user_input = Input(shape=(timestep_num,), name='user_input')
-    user_embed = Embedding(input_dim=user_num+1, output_dim=500, input_length=timestep_num,
+    user_embed = Embedding(input_dim=user_num + 1, output_dim=500, input_length=timestep_num,
                             weights=None, 
                             dropout=0.2,
 #                             init='normal',
-#                            W_regularizer=l2(0.001)
+                            W_regularizer=l2(0.001)
                             )(user_input)
 #     user_embed = Dropout(0.2)(user_embed)
     
     page_input = Input(shape=(timestep_num,), name='page_input')
-    page_embed = Embedding(input_dim=page_num+1, output_dim=500, input_length=timestep_num,
+    page_embed = Embedding(input_dim=page_num + 1, output_dim=500, input_length=timestep_num,
                             weights=None, 
                             dropout=0.2,
 #                             init='normal',
-#                            W_regularizer=l2(0.001)
+                            W_regularizer=l2(0.001)
                             )(page_input)
 #     page_embed = Dropout(0.2)(page_embed)                
+        
     
     depth_input = Input(shape=(timestep_num,), name='dep_input')
     depth_embed = Embedding(input_dim=101, output_dim=500, input_length=timestep_num,
                             weights=None, 
                             dropout=0.2,
 #                             init='normal',
-#                             W_regularizer=l2(0.001)
+                            W_regularizer=l2(0.001)
                             )(depth_input)
 #    depth_embed = Dropout(0.2)(depth_embed)  
+    
+    
+    
+    userfeat_input = Input(shape=(timestep_num, user_feat_num), name='userfeat_input')
+    pagefeat_input = Input(shape=(timestep_num, page_feat_num), name='pagefeat_input')   
     
     context_input = Input(shape=(timestep_num, ctx_feat_num), name='ctx_input')
     
     
-    user_page_merge= merge([user_embed, page_embed], mode='mul', dot_axes=2)
-    user_page_merge = Dropout(0.2)(user_page_merge)
-    user_depth_merge = merge([user_embed, depth_embed], mode='mul', dot_axes=2)
-    user_depth_merge = Dropout(0.2)(user_depth_merge)
-    page_depth_merge = merge([page_embed, depth_embed], mode='mul', dot_axes=2)
-    page_depth_merge = Dropout(0.2)(page_depth_merge)
-    user_page_depth_merge = merge([user_embed, page_embed, depth_embed], mode='mul', dot_axes=2)
-    user_page_depth_merge = Dropout(0.2)(user_page_depth_merge)
+    merged_model_u = merge([user_embed, userfeat_input], mode='concat')
+    merged_model_p = merge([page_embed, pagefeat_input], mode='concat')
+    
+    merged_model_u = TimeDistributed(Dense(output_dim=500, activation='tanh', 
+#                                            W_regularizer=l2(0.0001)
+                                           ))(merged_model_u)
+    merged_model_p = TimeDistributed(Dense(output_dim=500, activation='tanh', 
+#                                            W_regularizer=l2(0.0001)
+                                           ))(merged_model_p)
+    
+    
+#     user_page_merge= merge([user_embed, page_embed], mode='mul', dot_axes=2)
+#     user_page_merge = Dropout(0.2)(user_page_merge)
+#     user_depth_merge = merge([user_embed, depth_embed], mode='mul', dot_axes=2)
+#     user_depth_merge = Dropout(0.2)(user_depth_merge)
+#     page_depth_merge = merge([page_embed, depth_embed], mode='mul', dot_axes=2)
+#     page_depth_merge = Dropout(0.2)(page_depth_merge)
+#     user_page_depth_merge = merge([user_embed, page_embed, depth_embed], mode='mul', dot_axes=2)
+#     user_page_depth_merge = Dropout(0.2)(user_page_depth_merge)
     
     
        
-    merged_model = merge([user_embed, page_embed, 
+    merged_model = merge([merged_model_u, merged_model_p, 
                         depth_embed,
-                          user_page_merge,
-                        user_depth_merge, page_depth_merge, 
-                        user_page_depth_merge, 
+#                           user_page_merge,
+#                         user_depth_merge, page_depth_merge, 
+#                         user_page_depth_merge, 
                         context_input], mode='concat')
 #     merged_model = Dropout(0.2)(merged_model)
     
@@ -360,7 +377,7 @@ def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
     merged_model = Bidirectional(LSTM(output_dim=500, activation='tanh',
                           return_sequences=True, consume_less='gpu',
 #                           init='normal',
-#                           W_regularizer=l2(0.0001)
+#                         W_regularizer=l2(0.0001)
                           ), merge_mode='ave')(merged_model)
 #     merged_model = LeakyReLU(alpha=.01)(merged_model)
     merged_model = Dropout(0.2)(merged_model)
@@ -368,7 +385,7 @@ def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
     merged_model = Bidirectional(LSTM(output_dim=500, activation='tanh',
                           return_sequences=True, consume_less='gpu',
 #                           init='normal',
-#                           W_regularizer=l2(0.0001)
+#                         W_regularizer=l2(0.0001)
                           ), merge_mode='ave')(merged_model)
 #     merged_model = LeakyReLU(alpha=.01)(merged_model)
     merged_model = Dropout(0.2)(merged_model)
@@ -379,9 +396,11 @@ def RNN_upc_embed_c(ctx_feat_num, user_num, page_num, timestep_num=100):
     
     
     
-    merged_model = TimeDistributed(Dense(output_dim=1, activation='sigmoid'))(merged_model)
+    merged_model = TimeDistributed(Dense(output_dim=1, activation='sigmoid', 
+#                                          W_regularizer=l2(0.0001)
+                                         ))(merged_model)
     
-    model = Model(input=[user_input, page_input, depth_input, context_input], output=[merged_model])
+    model = Model(input=[user_input, page_input, depth_input, context_input, userfeat_input, pagefeat_input], output=[merged_model])
     
     
     
