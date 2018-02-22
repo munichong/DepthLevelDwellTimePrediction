@@ -264,7 +264,7 @@ def RNN_upc_embed_c(user_feat_num, page_feat_num, ctx_feat_num, user_num, page_n
         optimizer = SGD(lr=LR_RATES[0], decay=0, momentum=0.99, nesterov=True)
     else:
         optimizer = SGD(lr=0.01, decay=1e-6, momentum=0.99, nesterov=True)
-# optimizer = RMSprop(lr=0.0001, rho=0.9, epsilon=1e-08)
+# optimizer = RMSprop(lr=0.001, rho=0.9, epsilon=1e-08)
 # optimizer = Adam(lr=0.0001)
 
     user_input = Input(shape=(timestep_num,), name='user_input')
@@ -382,13 +382,13 @@ def RNN_upc_embed_c(user_feat_num, page_feat_num, ctx_feat_num, user_num, page_n
 #     merged_model = LeakyReLU(alpha=.01)(merged_model)
     merged_model = Dropout(0.2)(merged_model)
         
-    merged_model = Bidirectional(LSTM(output_dim=500, activation='tanh',
-                          return_sequences=True, consume_less='gpu',
-#                           init='normal',
-#                         W_regularizer=l2(0.0001)
-                          ), merge_mode='ave')(merged_model)
-#     merged_model = LeakyReLU(alpha=.01)(merged_model)
-    merged_model = Dropout(0.2)(merged_model)
+#     merged_model = Bidirectional(LSTM(output_dim=500, activation='tanh',
+#                           return_sequences=True, consume_less='gpu',
+# #                           init='normal',
+# #                         W_regularizer=l2(0.0001)
+#                           ), merge_mode='ave')(merged_model)
+# #     merged_model = LeakyReLU(alpha=.01)(merged_model)
+#     merged_model = Dropout(0.2)(merged_model)
     
     
     
